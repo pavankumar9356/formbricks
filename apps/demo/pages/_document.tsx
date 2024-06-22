@@ -1,8 +1,8 @@
-import { Html, Head, Main, NextScript } from "next/document";
+import { Head, Html, Main, NextScript } from "next/document";
 
-export default function Document() {
+const Document = () => {
   return (
-    <Html lang="en" className="h-full bg-gray-50">
+    <Html lang="en" className="h-full bg-slate-50">
       <Head />
       <body className="h-full">
         <Main />
@@ -10,4 +10,6 @@ export default function Document() {
       </body>
     </Html>
   );
-}
+};
+
+export default Document;

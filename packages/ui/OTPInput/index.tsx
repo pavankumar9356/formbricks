@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
-import { Input } from "../Input";
 import { cn } from "@formbricks/lib/cn";
+import { Input } from "../Input";
 
 export type OTPInputProps = {
   value: string;
@@ -13,14 +13,14 @@ export type OTPInputProps = {
 
 const RE_DIGIT = /^\d+$/;
 
-export function OTPInput({
+export const OTPInput = ({
   value,
   valueLength,
   onChange,
   containerClassName,
   inputBoxClassName,
   disabled,
-}: OTPInputProps) {
+}: OTPInputProps) => {
   const valueItems = useMemo(() => {
     const valueArray = value.split("");
     const items: Array<string> = [];
@@ -151,4 +151,4 @@ export function OTPInput({
       ))}
     </div>
   );
-}
+};

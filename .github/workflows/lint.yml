@@ -8,8 +8,8 @@ jobs:
     timeout-minutes: 15
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v3
+      - uses: actions/checkout@v3
+      - uses: ./.github/actions/dangerous-git-checkout
 
       - name: Setup Node.js 18.x
         uses: actions/setup-node@v3
@@ -25,10 +25,10 @@ jobs:
       - name: create .env
         run: cp .env.example .env
 
-      - name: Generate Random NEXTAUTH_SECRET
+      - name: Generate Random ENCRYPTION_KEY and fill in .env
         run: |
-          SECRET=$(openssl rand -hex 32)
-          echo "ENCRYPTION_KEY=$SECRET" >> $GITHUB_ENV
+          ENCRYPTION_KEY=$(openssl rand -hex 32)
+          sed -i "s/ENCRYPTION_KEY=.*/ENCRYPTION_KEY=${ENCRYPTION_KEY}/" .env
 
       - name: Lint
         run: pnpm lint

@@ -1,13 +1,13 @@
-import FormWrapper from "@/app/(auth)/auth/components/FormWrapper";
+import { FormWrapper } from "@/app/(auth)/auth/components/FormWrapper";
 import { RequestVerificationEmail } from "@/app/(auth)/auth/verification-requested/components/RequestVerificationEmail";
 import { z } from "zod";
 
 const VerificationPageSchema = z.string().email();
 
-export default function VerificationPage(params) {
+const Page = (params) => {
   const email = params.searchParams.email;
   try {
-    const parsedEmail = VerificationPageSchema.parse(email);
+    const parsedEmail = VerificationPageSchema.parse(email).toLowerCase();
     return (
       <FormWrapper>
         <>
@@ -35,4 +35,6 @@ export default function VerificationPage(params) {
       </FormWrapper>
     );
   }
-}
+};
+
+export default Page;

@@ -1,45 +1,40 @@
 "use client";
 
-import { TSurvey } from "@formbricks/types/surveys";
-import { Confetti } from "@formbricks/ui/Confetti";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import ShareEmbedSurvey from "./ShareEmbedSurvey";
-import { TProduct } from "@formbricks/types/product";
 import { TEnvironment } from "@formbricks/types/environment";
-import { TProfile } from "@formbricks/types/profile";
+import { TSurvey } from "@formbricks/types/surveys";
+import { TUser } from "@formbricks/types/user";
+import { Confetti } from "@formbricks/ui/Confetti";
+import { ShareEmbedSurvey } from "./ShareEmbedSurvey";
 
 interface SummaryMetadataProps {
   environment: TEnvironment;
   survey: TSurvey;
   webAppUrl: string;
-  product: TProduct;
-  profile: TProfile;
-  singleUseIds?: string[];
+  user: TUser;
 }
 
-export default function SuccessMessage({
-  environment,
-  survey,
-  webAppUrl,
-  product,
-  profile,
-}: SummaryMetadataProps) {
+export const SuccessMessage = ({ environment, survey, webAppUrl, user }: SummaryMetadataProps) => {
   const searchParams = useSearchParams();
   const [showLinkModal, setShowLinkModal] = useState(false);
   const [confetti, setConfetti] = useState(false);
+
+  const isAppSurvey = survey.type === "app" || survey.type === "website";
+  const widgetSetupCompleted =
+    survey.type === "app" ? environment.appSetupCompleted : environment.websiteSetupCompleted;
 
   useEffect(() => {
     const newSurveyParam = searchParams?.get("success");
     if (newSurveyParam && survey && environment) {
       setConfetti(true);
       toast.success(
-        survey.type === "web" && !environment.widgetSetupCompleted
+        isAppSurvey && !widgetSetupCompleted
           ? "Almost there! Install widget to start receiving responses."
           : "Congrats! Your survey is live.",
         {
-          icon: survey.type === "web" && !environment.widgetSetupCompleted ? "🤏" : "🎉",
+          icon: isAppSurvey && !widgetSetupCompleted ? "🤏" : "🎉",
           duration: 5000,
           position: "bottom-right",
         }
@@ -52,7 +47,7 @@ export default function SuccessMessage({
       url.searchParams.delete("success");
       window.history.replaceState({}, "", url.toString());
     }
-  }, [environment, searchParams, survey]);
+  }, [environment, isAppSurvey, searchParams, survey, widgetSetupCompleted]);
 
   return (
     <>
@@ -61,10 +56,9 @@ export default function SuccessMessage({
         open={showLinkModal}
         setOpen={setShowLinkModal}
         webAppUrl={webAppUrl}
-        product={product}
-        profile={profile}
+        user={user}
       />
       {confetti && <Confetti />}
     </>
   );
-}
+};

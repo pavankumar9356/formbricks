@@ -1,39 +1,32 @@
+import { LightbulbIcon } from "lucide-react";
+import { WEBAPP_URL } from "@formbricks/lib/constants";
 import { getEnvironment, getEnvironments } from "@formbricks/lib/environment/service";
-import { LightBulbIcon } from "@heroicons/react/24/outline";
-import { headers } from "next/headers";
 
 interface EnvironmentNoticeProps {
   environmentId: string;
+  subPageUrl: string;
 }
 
-export default async function EnvironmentNotice({ environmentId }: EnvironmentNoticeProps) {
-  const headersList = headers();
-  const currentUrl = headersList.get("referer") || headersList.get("x-invoke-path") || "";
+export const EnvironmentNotice = async ({ environmentId, subPageUrl }: EnvironmentNoticeProps) => {
   const environment = await getEnvironment(environmentId);
-  const environments = await getEnvironments(environment.productId);
-  const otherEnvironmentId = environments.find((e) => e.id !== environment.id)?.id || "";
+  if (!environment) {
+    throw new Error("Environment not found");
+  }
 
-  const replaceEnvironmentId = (url: string, newId: string): string => {
-    const regex = /environments\/([a-zA-Z0-9]+)/;
-    if (regex.test(url)) {
-      return url.replace(regex, `environments/${newId}`);
-    }
-    return url;
-  };
+  const environments = await getEnvironments(environment.productId);
+  const otherEnvironmentId = environments.filter((e) => e.id !== environment.id)[0].id;
 
   return (
-    <div>
-      <div className="flex items-center space-y-3 rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900 shadow-sm md:space-y-0 md:text-base">
-        <LightBulbIcon className="mr-3 h-4 w-4 text-blue-400" />
-        <p>
-          {`You're currently in the ${environment.type} environment.`}
-          <a
-            href={replaceEnvironmentId(currentUrl, otherEnvironmentId)}
-            className="ml-1 cursor-pointer text-sm underline">
-            Switch to {environment.type === "production" ? "Development" : "Production"} now.
-          </a>
-        </p>
-      </div>
+    <div className="mt-4 flex max-w-4xl items-center space-y-4 rounded-lg border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900 shadow-sm md:space-y-0 md:text-base">
+      <LightbulbIcon className="mr-3 h-4 w-4 text-blue-400" />
+      <p className="text-sm">
+        {`You're currently in the ${environment.type} environment.`}
+        <a
+          href={`${WEBAPP_URL}/environments/${otherEnvironmentId}${subPageUrl}`}
+          className="ml-1 cursor-pointer text-sm underline">
+          Switch to {environment.type === "production" ? "Development" : "Production"} now.
+        </a>
+      </p>
     </div>
   );
-}
+};

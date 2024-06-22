@@ -1,6 +1,5 @@
 "use client";
 
-import { cn } from "@formbricks/lib/cn";
 import { $generateHtmlFromNodes, $generateNodesFromDOM } from "@lexical/html";
 import { $isLinkNode, TOGGLE_LINK_COMMAND } from "@lexical/link";
 import {
@@ -14,7 +13,7 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import { $createHeadingNode, $isHeadingNode } from "@lexical/rich-text";
 import { $isAtNodeEnd, $wrapNodes } from "@lexical/selection";
 import { $getNearestNodeOfType, mergeRegister } from "@lexical/utils";
-import type { EditorState, GridSelection, LexicalEditor, NodeSelection, RangeSelection } from "lexical";
+import type { BaseSelection, EditorState, LexicalEditor, NodeSelection, RangeSelection } from "lexical";
 import {
   $createParagraphNode,
   $getRoot,
@@ -24,14 +23,16 @@ import {
   FORMAT_TEXT_COMMAND,
   SELECTION_CHANGE_COMMAND,
 } from "lexical";
+import { COMMAND_PRIORITY_CRITICAL, PASTE_COMMAND } from "lexical";
+import { Bold, ChevronDownIcon, Italic, Link } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Input } from "../../Input";
-import { Bold, ChevronDownIcon, Italic, Link } from "lucide-react";
+import { cn } from "@formbricks/lib/cn";
 import { Button } from "../../Button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "../../DropdownMenu";
-import type { TextEditorProps } from "./Editor";
+import { Input } from "../../Input";
 import { AddVariablesDropdown } from "./AddVariablesDropdown";
+import type { TextEditorProps } from "./Editor";
 
 const LowPriority = 1;
 
@@ -49,7 +50,7 @@ const blockTypeToBlockName: BlockType = {
   h2: "Small Heading",
 };
 
-function positionEditorElement(editor: HTMLInputElement, rect: DOMRect | null) {
+const positionEditorElement = (editor: HTMLInputElement, rect: DOMRect | null) => {
   if (rect === null) {
     editor.style.opacity = "0";
     editor.style.top = "-1000px";
@@ -59,15 +60,15 @@ function positionEditorElement(editor: HTMLInputElement, rect: DOMRect | null) {
     editor.style.top = `${rect.top + rect.height + window.pageYOffset + 10}px`;
     editor.style.left = `${rect.left + window.pageXOffset - editor.offsetWidth / 2 + rect.width / 2}px`;
   }
-}
+};
 
-function FloatingLinkEditor({ editor }: { editor: LexicalEditor }) {
+const FloatingLinkEditor = ({ editor }: { editor: LexicalEditor }) => {
   const editorRef = useRef<HTMLInputElement>(null);
   const mouseDownRef = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [linkUrl, setLinkUrl] = useState("");
   const [isEditMode, setEditMode] = useState(false);
-  const [lastSelection, setLastSelection] = useState<RangeSelection | NodeSelection | GridSelection | null>(
+  const [lastSelection, setLastSelection] = useState<RangeSelection | NodeSelection | BaseSelection | null>(
     null
   );
 
@@ -156,35 +157,48 @@ function FloatingLinkEditor({ editor }: { editor: LexicalEditor }) {
     }
   }, [isEditMode]);
 
+  useEffect(() => {
+    setEditMode(true);
+  }, []);
+
+  const handleSubmit = () => {
+    if (lastSelection && linkUrl) {
+      editor.dispatchCommand(TOGGLE_LINK_COMMAND, linkUrl);
+    }
+    setEditMode(false);
+  };
+
   return (
     <div ref={editorRef} className="link-editor">
-      <Input
-        className="bg-white"
-        ref={inputRef}
-        value={linkUrl}
-        onChange={(event) => {
-          setLinkUrl(event.target.value);
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Enter") {
-            event.preventDefault();
-            if (lastSelection !== null) {
-              if (linkUrl !== "") {
-                editor.dispatchCommand(TOGGLE_LINK_COMMAND, linkUrl);
+      {isEditMode && (
+        <div className="flex">
+          <Input
+            className="bg-white"
+            ref={inputRef}
+            value={linkUrl}
+            onChange={(event) => {
+              setLinkUrl(event.target.value);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                handleSubmit();
+              } else if (event.key === "Escape") {
+                event.preventDefault();
+                setEditMode(false);
               }
-              setEditMode(false);
-            }
-          } else if (event.key === "Escape") {
-            event.preventDefault();
-            setEditMode(false);
-          }
-        }}
-      />
+            }}
+          />
+          <Button variant="darkCTA" className="py-2" onClick={handleSubmit}>
+            Add
+          </Button>
+        </div>
+      )}
     </div>
   );
-}
+};
 
-function getSelectedNode(selection: RangeSelection) {
+const getSelectedNode = (selection: RangeSelection) => {
   const anchor = selection.anchor;
   const focus = selection.focus;
   const anchorNode = selection.anchor.getNode();
@@ -198,10 +212,11 @@ function getSelectedNode(selection: RangeSelection) {
   } else {
     return $isAtNodeEnd(anchor) ? focusNode : anchorNode;
   }
-}
+};
 
-export default function ToolbarPlugin(props: TextEditorProps) {
+export const ToolbarPlugin = (props: TextEditorProps) => {
   const [editor] = useLexicalComposerContext();
+
   const toolbarRef = useRef(null);
   const [blockType, setBlockType] = useState("paragraph");
   const [isLink, setIsLink] = useState(false);
@@ -348,10 +363,11 @@ export default function ToolbarPlugin(props: TextEditorProps) {
         }
       });
     }
-  }, [props.updateTemplate]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.updateTemplate, props.firstRender]);
 
   useEffect(() => {
-    if (props.setFirstRender) {
+    if (props.setFirstRender && props.firstRender) {
       props.setFirstRender(false);
       editor.update(() => {
         const parser = new DOMParser();
@@ -397,11 +413,35 @@ export default function ToolbarPlugin(props: TextEditorProps) {
 
   const insertLink = useCallback(() => {
     if (!isLink) {
-      editor.dispatchCommand(TOGGLE_LINK_COMMAND, "https://");
+      editor.dispatchCommand(TOGGLE_LINK_COMMAND, {
+        url: "https://",
+        target: "_blank",
+        rel: "noopener noreferrer",
+      });
     } else {
       editor.dispatchCommand(TOGGLE_LINK_COMMAND, null);
     }
   }, [editor, isLink]);
+
+  useEffect(() => {
+    return editor.registerCommand(
+      PASTE_COMMAND,
+      (e: ClipboardEvent) => {
+        const text = e.clipboardData?.getData("text/plain");
+
+        editor.update(() => {
+          const selection = $getSelection();
+          if ($isRangeSelection(selection)) {
+            selection.insertRawText(text ?? "");
+          }
+        });
+
+        e.preventDefault();
+        return true; // Prevent the default paste handler
+      },
+      COMMAND_PRIORITY_CRITICAL
+    );
+  }, [editor]);
 
   if (!props.editable) return <></>;
   return (
@@ -453,11 +493,8 @@ export default function ToolbarPlugin(props: TextEditorProps) {
               StartIcon={Bold}
               onClick={() => {
                 editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold");
-                if (isItalic) {
-                  editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic");
-                }
               }}
-              className={isBold ? "bg-subtle" : ""}
+              className={isBold ? "bg-subtle active-button" : "inactive-button"}
             />
           )}
           {!props.excludedToolbarItems?.includes("italic") && (
@@ -468,11 +505,8 @@ export default function ToolbarPlugin(props: TextEditorProps) {
               StartIcon={Italic}
               onClick={() => {
                 editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic");
-                if (isItalic) {
-                  editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold");
-                }
               }}
-              className={isItalic ? "bg-subtle" : ""}
+              className={isItalic ? "bg-subtle active-button" : "inactive-button"}
             />
           )}
           {!props.excludedToolbarItems?.includes("link") && (
@@ -483,7 +517,7 @@ export default function ToolbarPlugin(props: TextEditorProps) {
                 type="button"
                 StartIcon={Link}
                 onClick={insertLink}
-                className={isLink ? "bg-subtle" : ""}
+                className={isLink ? "bg-subtle active-button" : "inactive-button"}
               />
               {isLink && createPortal(<FloatingLinkEditor editor={editor} />, document.body)}{" "}
             </>
@@ -501,4 +535,4 @@ export default function ToolbarPlugin(props: TextEditorProps) {
       </>
     </div>
   );
-}
+};

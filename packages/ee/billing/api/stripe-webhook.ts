@@ -1,56 +1,39 @@
-import { updateTeam } from "@formbricks/lib/team/service";
-
 import Stripe from "stripe";
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  // https://github.com/stripe/stripe-node#configuration
-  apiVersion: "2023-10-16",
+import { STRIPE_API_VERSION } from "@formbricks/lib/constants";
+import { env } from "@formbricks/lib/env";
+import { handleCheckoutSessionCompleted } from "../handlers/checkout-session-completed";
+import { handleInvoiceFinalized } from "../handlers/invoice-finalized";
+import { handleSubscriptionCreatedOrUpdated } from "../handlers/subscription-created-or-updated";
+import { handleSubscriptionDeleted } from "../handlers/subscription-deleted";
+
+const stripe = new Stripe(env.STRIPE_SECRET_KEY!, {
+  apiVersion: STRIPE_API_VERSION,
 });
 
-const webhookSecret: string = process.env.STRIPE_WEBHOOK_SECRET!;
+const webhookSecret: string = env.STRIPE_WEBHOOK_SECRET!;
 
-const webhookHandler = async (requestBody: string, stripeSignature: string) => {
+export const webhookHandler = async (requestBody: string, stripeSignature: string) => {
   let event: Stripe.Event;
 
   try {
     event = stripe.webhooks.constructEvent(requestBody, stripeSignature, webhookSecret);
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
-    // On error, log and return the error message.
-    if (err! instanceof Error) console.log(err);
+    if (err! instanceof Error) console.error(err);
     return { status: 400, message: `Webhook Error: ${errorMessage}` };
   }
 
-  // Cast event data to Stripe object.
   if (event.type === "checkout.session.completed") {
-    const checkoutSession = event.data.object as Stripe.Checkout.Session;
-    const teamId = checkoutSession.client_reference_id;
-    if (!teamId) {
-      return { status: 400, message: "skipping, no teamId found" };
-    }
-    const stripeCustomerId = checkoutSession.customer as string;
-    const plan = "pro";
-    await updateTeam(teamId, { stripeCustomerId, plan });
-
-    const subscription = await stripe.subscriptions.retrieve(checkoutSession.subscription as string);
-    await stripe.subscriptions.update(subscription.id, {
-      metadata: {
-        teamId,
-      },
-    });
+    await handleCheckoutSessionCompleted(event);
+  } else if (event.type === "invoice.finalized") {
+    await handleInvoiceFinalized(event);
+  } else if (
+    event.type === "customer.subscription.created" ||
+    event.type === "customer.subscription.updated"
+  ) {
+    await handleSubscriptionCreatedOrUpdated(event);
   } else if (event.type === "customer.subscription.deleted") {
-    const subscription = event.data.object as Stripe.Subscription;
-    const teamId = subscription.metadata.teamId;
-    if (!teamId) {
-      console.error("No teamId found in subscription");
-      return { status: 400, message: "skipping, no teamId found" };
-    }
-    await updateTeam(teamId, { plan: "free" });
-  } else {
-    console.warn(`🤷‍♀️ Unhandled event type: ${event.type}`);
+    await handleSubscriptionDeleted(event);
   }
-
-  // Return a response to acknowledge receipt of the event.
   return { status: 200, message: { received: true } };
 };
-
-export default webhookHandler;

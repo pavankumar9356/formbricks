@@ -1,34 +1,101 @@
 "use server";
 
-import { generateSurveySingleUseId } from "@/app/lib/singleUseSurveys";
-import { authOptions } from "@formbricks/lib/authOptions";
-import { sendEmbedSurveyPreviewEmail } from "@formbricks/lib/emails/emails";
-import { canUserAccessSurvey } from "@formbricks/lib/survey/auth";
-import { AuthenticationError, AuthorizationError } from "@formbricks/types/errors";
+import { getEmailTemplateHtml } from "@/app/(app)/environments/[environmentId]/surveys/[surveyId]/(analysis)/summary/lib/emailTemplate";
+import { customAlphabet } from "nanoid";
 import { getServerSession } from "next-auth";
+import { sendEmbedSurveyPreviewEmail } from "@formbricks/email";
+import { authOptions } from "@formbricks/lib/authOptions";
+import { canUserAccessSurvey } from "@formbricks/lib/survey/auth";
+import { getSurvey, updateSurvey } from "@formbricks/lib/survey/service";
+import { AuthenticationError, AuthorizationError, ResourceNotFoundError } from "@formbricks/types/errors";
 
-type TSendEmailActionArgs = {
-  to: string;
-  subject: string;
-  html: string;
+export const sendEmbedSurveyPreviewEmailAction = async (surveyId: string) => {
+  const session = await getServerSession(authOptions);
+  if (!session) {
+    throw new AuthenticationError("Not authenticated");
+  }
+
+  const survey = await getSurvey(surveyId);
+  if (!survey) {
+    throw new ResourceNotFoundError("Survey", surveyId);
+  }
+
+  const isUserAuthorized = await canUserAccessSurvey(session.user.id, surveyId);
+  if (!isUserAuthorized) {
+    throw new AuthorizationError("Not authorized");
+  }
+  const rawEmailHtml = await getEmailTemplateHtml(surveyId);
+  const emailHtml = rawEmailHtml
+    .replaceAll("?preview=true&amp;", "?")
+    .replaceAll("?preview=true&;", "?")
+    .replaceAll("?preview=true", "");
+
+  return await sendEmbedSurveyPreviewEmail(
+    session.user.email,
+    "Formbricks Email Survey Preview",
+    emailHtml,
+    survey.environmentId
+  );
 };
 
-export async function generateSingleUseIdAction(surveyId: string, isEncrypted: boolean): Promise<string> {
+export const generateResultShareUrlAction = async (surveyId: string): Promise<string> => {
   const session = await getServerSession(authOptions);
   if (!session) throw new AuthorizationError("Not authorized");
 
   const hasUserSurveyAccess = await canUserAccessSurvey(session.user.id, surveyId);
-
   if (!hasUserSurveyAccess) throw new AuthorizationError("Not authorized");
 
-  return generateSurveySingleUseId(isEncrypted);
-}
-
-export const sendEmailAction = async ({ html, subject, to }: TSendEmailActionArgs) => {
-  const session = await getServerSession(authOptions);
-
-  if (!session) {
-    throw new AuthenticationError("Not authenticated");
+  const survey = await getSurvey(surveyId);
+  if (!survey?.id) {
+    throw new ResourceNotFoundError("Survey", surveyId);
   }
-  return await sendEmbedSurveyPreviewEmail(to, subject, html);
+
+  const resultShareKey = customAlphabet(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+    20
+  )();
+
+  await updateSurvey({ ...survey, resultShareKey });
+
+  return resultShareKey;
+};
+
+export const getResultShareUrlAction = async (surveyId: string): Promise<string | null> => {
+  const session = await getServerSession(authOptions);
+  if (!session) throw new AuthorizationError("Not authorized");
+
+  const hasUserSurveyAccess = await canUserAccessSurvey(session.user.id, surveyId);
+  if (!hasUserSurveyAccess) throw new AuthorizationError("Not authorized");
+
+  const survey = await getSurvey(surveyId);
+  if (!survey?.id) {
+    throw new ResourceNotFoundError("Survey", surveyId);
+  }
+
+  return survey.resultShareKey;
+};
+
+export const deleteResultShareUrlAction = async (surveyId: string): Promise<void> => {
+  const session = await getServerSession(authOptions);
+  if (!session) throw new AuthorizationError("Not authorized");
+
+  const hasUserSurveyAccess = await canUserAccessSurvey(session.user.id, surveyId);
+  if (!hasUserSurveyAccess) throw new AuthorizationError("Not authorized");
+
+  const survey = await getSurvey(surveyId);
+  if (!survey?.id) {
+    throw new ResourceNotFoundError("Survey", surveyId);
+  }
+
+  await updateSurvey({ ...survey, resultShareKey: null });
+};
+
+export const getEmailHtmlAction = async (surveyId: string) => {
+  const session = await getServerSession(authOptions);
+  if (!session) throw new AuthorizationError("Not authorized");
+
+  const hasUserSurveyAccess = await canUserAccessSurvey(session.user.id, surveyId);
+  if (!hasUserSurveyAccess) throw new AuthorizationError("Not authorized");
+
+  return await getEmailTemplateHtml(surveyId);
 };

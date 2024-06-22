@@ -1,23 +1,44 @@
-import { IMPRINT_URL, PRIVACY_URL } from "@formbricks/lib/constants";
 import Link from "next/link";
 
-export default function LegalFooter() {
-  if (!IMPRINT_URL && !PRIVACY_URL) return null;
+interface LegalFooterProps {
+  IMPRINT_URL?: string;
+  PRIVACY_URL?: string;
+  IS_FORMBRICKS_CLOUD: boolean;
+  surveyUrl: string;
+}
+
+export const LegalFooter = ({
+  IMPRINT_URL,
+  PRIVACY_URL,
+  IS_FORMBRICKS_CLOUD,
+  surveyUrl,
+}: LegalFooterProps) => {
+  if (!IMPRINT_URL && !PRIVACY_URL && !IS_FORMBRICKS_CLOUD) return null;
+
   return (
-    <div className="h-10 w-full border-t border-slate-200">
-      <div className="mx-auto max-w-lg p-3 text-center text-sm text-slate-400">
+    <div className="absolute bottom-0 h-10 w-full">
+      <div className="mx-auto max-w-lg p-2 text-center text-xs text-slate-400 text-opacity-50">
         {IMPRINT_URL && (
-          <Link href={IMPRINT_URL} target="_blank">
+          <Link href={IMPRINT_URL} target="_blank" className="hover:underline">
             Imprint
           </Link>
         )}
-        {IMPRINT_URL && PRIVACY_URL && <span> | </span>}
+        {IMPRINT_URL && PRIVACY_URL && <span className="px-2">|</span>}
         {PRIVACY_URL && (
-          <Link href={PRIVACY_URL} target="_blank">
+          <Link href={PRIVACY_URL} target="_blank" className="hover:underline">
             Privacy Policy
+          </Link>
+        )}
+        {PRIVACY_URL && IS_FORMBRICKS_CLOUD && <span className="px-2">|</span>}
+        {IS_FORMBRICKS_CLOUD && (
+          <Link
+            href={`https://app.formbricks.com/s/clxbivtla014iye2vfrn436xd?surveyUrl=${surveyUrl}`}
+            target="_blank"
+            className="hover:underline">
+            Report Survey
           </Link>
         )}
       </div>
     </div>
   );
-}
+};

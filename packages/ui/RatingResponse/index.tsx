@@ -1,3 +1,4 @@
+import { StarIcon } from "lucide-react";
 import {
   ConfusedFace,
   FrowningFace,
@@ -10,8 +11,6 @@ import {
   TiredFace,
   WearyFace,
 } from "../SingleResponseCard/components/Smileys";
-
-import { StarIcon } from "@heroicons/react/24/solid";
 
 interface RatingResponseProps {
   scale?: "number" | "star" | "smiley";
@@ -28,9 +27,9 @@ export const RatingResponse: React.FC<RatingResponseProps> = ({ scale, range, an
     const stars: any = [];
     for (let i = 0; i < range; i++) {
       if (i < parseInt(answer.toString())) {
-        stars.push(<StarIcon key={i} className="h-7 text-yellow-400" />);
+        stars.push(<StarIcon key={i} fill="rgb(250 204 21)" className="h-7 text-yellow-400" />);
       } else {
-        stars.push(<StarIcon key={i} className="h-7 text-gray-300" />);
+        stars.push(<StarIcon key={i} className="h-7 text-slate-300" />);
       }
     }
     return <div className="flex">{stars}</div>;

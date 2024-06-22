@@ -1,15 +1,20 @@
 import { z } from "zod";
-import { ZSurveyWelcomeCard, ZSurveyHiddenFields, ZSurveyQuestions, ZSurveyThankYouCard } from "./surveys";
-import { ZProfileObjective } from "./profile";
+import { ZLegacySurveyQuestions, ZLegacySurveyThankYouCard, ZLegacySurveyWelcomeCard } from "./LegacySurvey";
+import { ZProductConfigChannel, ZProductConfigIndustry } from "./product";
+import { ZSurveyHiddenFields, ZSurveyQuestions, ZSurveyThankYouCard, ZSurveyWelcomeCard } from "./surveys";
+import { ZUserObjective } from "./user";
+
+export const ZTemplateRole = z.enum(["productManager", "customerSuccess", "marketing", "sales"]);
+export type TTemplateRole = z.infer<typeof ZTemplateRole>;
 
 export const ZTemplate = z.object({
   name: z.string(),
   description: z.string(),
   icon: z.any().optional(),
-  category: z
-    .enum(["Product Experience", "Exploration", "Growth", "Increase Revenue", "Customer Success"])
-    .optional(),
-  objectives: z.array(ZProfileObjective).optional(),
+  role: ZTemplateRole.optional(),
+  channels: z.array(z.enum(["link", "app", "website"])).optional(),
+  industries: z.array(z.enum(["eCommerce", "saas", "other"])).optional(),
+  objectives: z.array(ZUserObjective).optional(),
   preset: z.object({
     name: z.string(),
     welcomeCard: ZSurveyWelcomeCard,
@@ -20,3 +25,24 @@ export const ZTemplate = z.object({
 });
 
 export type TTemplate = z.infer<typeof ZTemplate>;
+
+export const ZLegacyTemplate = ZTemplate.extend({
+  preset: z.object({
+    name: z.string(),
+    welcomeCard: ZLegacySurveyWelcomeCard,
+    questions: ZLegacySurveyQuestions,
+    thankYouCard: ZLegacySurveyThankYouCard,
+    hiddenFields: ZSurveyHiddenFields,
+  }),
+});
+
+export type TLegacyTemplate = z.infer<typeof ZLegacyTemplate>;
+
+export const ZTemplateFilter = z.union([
+  ZProductConfigChannel,
+  ZProductConfigIndustry,
+  ZTemplateRole,
+  z.null(),
+]);
+
+export type TTemplateFilter = z.infer<typeof ZTemplateFilter>;

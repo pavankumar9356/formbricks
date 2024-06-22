@@ -1,5 +1,5 @@
-import { BackIcon } from "@formbricks/ui/icons";
 import Link from "next/link";
+import { BackIcon } from "@formbricks/ui/icons";
 
 interface IntegrationPageTitleProps {
   title: string;
@@ -7,7 +7,7 @@ interface IntegrationPageTitleProps {
   environmentId: string;
 }
 
-const IntegrationPageTitle: React.FC<IntegrationPageTitleProps> = ({ title, icon, environmentId }) => {
+export const IntegrationPageTitle = ({ title, icon, environmentId }: IntegrationPageTitleProps) => {
   return (
     <div className="flex justify-between">
       <div className="mb-8">
@@ -27,5 +27,3 @@ const IntegrationPageTitle: React.FC<IntegrationPageTitleProps> = ({ title, icon
     </div>
   );
 };
-
-export default IntegrationPageTitle;

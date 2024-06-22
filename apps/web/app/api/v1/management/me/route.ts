@@ -1,9 +1,8 @@
 import { getSessionUser, hashApiKey } from "@/app/lib/api/apiHelper";
-import { prisma } from "@formbricks/database";
 import { headers } from "next/headers";
-import { NextResponse } from "next/server";
+import { prisma } from "@formbricks/database";
 
-export async function GET() {
+export const GET = async () => {
   const headersList = headers();
   const apiKey = headersList.get("x-api-key");
   if (apiKey) {
@@ -24,7 +23,8 @@ export async function GET() {
                 name: true,
               },
             },
-            widgetSetupCompleted: true,
+            appSetupCompleted: true,
+            websiteSetupCompleted: true,
           },
         },
       },
@@ -34,7 +34,7 @@ export async function GET() {
         status: 401,
       });
     }
-    return NextResponse.json(apiKeyData.environment);
+    return Response.json(apiKeyData.environment);
   } else {
     const sessionUser = await getSessionUser();
     if (!sessionUser) {
@@ -49,6 +49,6 @@ export async function GET() {
       },
     });
 
-    return NextResponse.json(user);
+    return Response.json(user);
   }
-}
+};

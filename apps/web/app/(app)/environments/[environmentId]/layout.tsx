@@ -1,17 +1,20 @@
-import EnvironmentsNavbar from "@/app/(app)/environments/[environmentId]/components/EnvironmentsNavbar";
-import ToasterClient from "@formbricks/ui/ToasterClient";
-import { getServerSession } from "next-auth";
-import { redirect } from "next/navigation";
-import { authOptions } from "@formbricks/lib/authOptions";
-import FormbricksClient from "../../components/FormbricksClient";
+import { EnvironmentLayout } from "@/app/(app)/environments/[environmentId]/components/EnvironmentLayout";
 import { ResponseFilterProvider } from "@/app/(app)/environments/[environmentId]/components/ResponseFilterContext";
+import { getServerSession } from "next-auth";
+import { notFound, redirect } from "next/navigation";
+import { authOptions } from "@formbricks/lib/authOptions";
 import { hasUserEnvironmentAccess } from "@formbricks/lib/environment/auth";
-import { IS_FORMBRICKS_CLOUD } from "@formbricks/lib/constants";
+import { getMembershipByUserIdOrganizationId } from "@formbricks/lib/membership/service";
+import { getOrganizationByEnvironmentId } from "@formbricks/lib/organization/service";
+import { getProductByEnvironmentId } from "@formbricks/lib/product/service";
 import { AuthorizationError } from "@formbricks/types/errors";
+import { ToasterClient } from "@formbricks/ui/ToasterClient";
+import { FormbricksClient } from "../../components/FormbricksClient";
+import { PosthogIdentify } from "./components/PosthogIdentify";
 
-export default async function EnvironmentLayout({ children, params }) {
+const EnvLayout = async ({ children, params }) => {
   const session = await getServerSession(authOptions);
-  if (!session) {
+  if (!session || !session.user) {
     return redirect(`/auth/login`);
   }
   const hasAccess = await hasUserEnvironmentAccess(session.user.id, params.environmentId);
@@ -19,21 +22,36 @@ export default async function EnvironmentLayout({ children, params }) {
     throw new AuthorizationError("Not authorized");
   }
 
+  const organization = await getOrganizationByEnvironmentId(params.environmentId);
+  if (!organization) {
+    throw new Error("Organization not found");
+  }
+  const product = await getProductByEnvironmentId(params.environmentId);
+  if (!product) {
+    throw new Error("Product not found");
+  }
+
+  const membership = await getMembershipByUserIdOrganizationId(session.user.id, organization.id);
+  if (!membership) return notFound();
+
   return (
     <>
       <ResponseFilterProvider>
+        <PosthogIdentify
+          session={session}
+          environmentId={params.environmentId}
+          organizationId={organization.id}
+          organizationName={organization.name}
+          organizationBilling={organization.billing}
+        />
         <FormbricksClient session={session} />
         <ToasterClient />
-        <EnvironmentsNavbar
-          environmentId={params.environmentId}
-          session={session}
-          isFormbricksCloud={IS_FORMBRICKS_CLOUD}
-        />
-        <main className="h-full flex-1 overflow-y-auto bg-slate-50">
+        <EnvironmentLayout environmentId={params.environmentId} session={session}>
           {children}
-          <main />
-        </main>
+        </EnvironmentLayout>
       </ResponseFilterProvider>
     </>
   );
-}
+};
+
+export default EnvLayout;

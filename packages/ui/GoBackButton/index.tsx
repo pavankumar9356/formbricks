@@ -1,13 +1,16 @@
 "use client";
 
-import { BackIcon } from "../icons";
+import { ArrowLeftIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { Button } from "../Button";
 
-export default function GoBackButton({ url }: { url?: string }) {
+export const GoBackButton = ({ url }: { url?: string }) => {
   const router = useRouter();
   return (
-    <button
-      className="inline-flex pt-5 text-sm text-slate-500"
+    <Button
+      size="sm"
+      variant="secondary"
+      StartIcon={ArrowLeftIcon}
       onClick={() => {
         if (url) {
           router.push(url);
@@ -15,8 +18,7 @@ export default function GoBackButton({ url }: { url?: string }) {
         }
         router.back();
       }}>
-      <BackIcon className="mr-2 h-5 w-5" />
       Back
-    </button>
+    </Button>
   );
-}
+};

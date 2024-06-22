@@ -1,18 +1,46 @@
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../Tooltip";
-import { ChevronDoubleDownIcon, XCircleIcon } from "@heroicons/react/20/solid";
+import { CheckCircle2Icon, ChevronsDownIcon, XCircleIcon } from "lucide-react";
+import { getLocalizedValue } from "@formbricks/lib/i18n/utils";
+import { parseRecallInfo } from "@formbricks/lib/utils/recall";
+import { TResponseData } from "@formbricks/types/responses";
 import { TSurveyQuestion } from "@formbricks/types/surveys";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../../Tooltip";
 
 interface QuestionSkipProps {
   skippedQuestions: string[] | undefined;
   status: string;
   questions: TSurveyQuestion[];
+  isFirstQuestionAnswered?: boolean;
+  responseData: TResponseData;
 }
 
-export default function QuestionSkip({ skippedQuestions, status, questions }: QuestionSkipProps) {
+export const QuestionSkip = ({
+  skippedQuestions,
+  status,
+  questions,
+  isFirstQuestionAnswered,
+  responseData,
+}: QuestionSkipProps) => {
   return (
-    <>
+    <div>
       {skippedQuestions && (
-        <div className="flex w-full p-2 text-sm text-slate-400">
+        <div className="my-2 flex w-full px-2 text-sm text-slate-400">
+          {status === "welcomeCard" && (
+            <div className="mb-2 flex">
+              {
+                <div
+                  className={`relative flex ${
+                    isFirstQuestionAnswered ? "h-[100%]" : "h-[200%]"
+                  } w-0.5 items-center justify-center`}
+                  style={{
+                    background:
+                      "repeating-linear-gradient(rgb(148, 163, 184), rgb(148, 163, 184) 5px, transparent 5px, transparent 8px)", // adjust the values to fit your design
+                  }}>
+                  <CheckCircle2Icon className="p-0.25 absolute top-0 w-[1.5rem] min-w-[1.5rem] rounded-full bg-white text-slate-400" />
+                </div>
+              }
+              <div className=" ml-6 flex flex-col text-slate-700">Welcome Card</div>
+            </div>
+          )}
           {status === "skipped" && (
             <div className="flex">
               <div
@@ -25,7 +53,7 @@ export default function QuestionSkip({ skippedQuestions, status, questions }: Qu
                   <TooltipProvider delayDuration={50}>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <ChevronDoubleDownIcon className="w-[1.25rem] min-w-[1.25rem] rounded-full bg-slate-400 p-0.5 text-white" />
+                        <ChevronsDownIcon className="w-[1.25rem] min-w-[1.25rem] rounded-full bg-slate-400 p-0.5 text-white" />
                       </TooltipTrigger>
                       <TooltipContent>
                         <p>Respondent skipped these questions.</p>
@@ -39,7 +67,14 @@ export default function QuestionSkip({ skippedQuestions, status, questions }: Qu
                   skippedQuestions.map((questionId) => {
                     return (
                       <p className="my-2" key={questionId}>
-                        {questions.find((question) => question.id === questionId)!.headline}
+                        {parseRecallInfo(
+                          getLocalizedValue(
+                            questions.find((question) => question.id === questionId)!.headline,
+                            "default"
+                          ),
+                          {},
+                          responseData
+                        )}
                       </p>
                     );
                   })}
@@ -59,12 +94,21 @@ export default function QuestionSkip({ skippedQuestions, status, questions }: Qu
                 </div>
               </div>
               <div className="mb-2 ml-4 flex flex-col">
-                <p className="mb-2 w-fit rounded-lg bg-slate-100 px-2 text-slate-700">Survey Closed</p>
+                <p className="mb-2 w-fit rounded-lg bg-slate-100 px-2 font-medium text-slate-700">
+                  Survey closed
+                </p>
                 {skippedQuestions &&
                   skippedQuestions.map((questionId) => {
                     return (
                       <p className="my-2" key={questionId}>
-                        {questions.find((question) => question.id === questionId)!.headline}
+                        {parseRecallInfo(
+                          getLocalizedValue(
+                            questions.find((question) => question.id === questionId)!.headline,
+                            "default"
+                          ),
+                          {},
+                          responseData
+                        )}
                       </p>
                     );
                   })}
@@ -73,6 +117,6 @@ export default function QuestionSkip({ skippedQuestions, status, questions }: Qu
           )}
         </div>
       )}
-    </>
+    </div>
   );
-}
+};

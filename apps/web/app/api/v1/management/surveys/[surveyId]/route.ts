@@ -1,12 +1,10 @@
+import { authenticateRequest, handleErrorResponse } from "@/app/api/v1/auth";
 import { responses } from "@/app/lib/api/response";
-import { NextResponse } from "next/server";
-import { getSurvey, updateSurvey, deleteSurvey } from "@formbricks/lib/survey/service";
-import { TSurvey, ZSurvey } from "@formbricks/types/surveys";
 import { transformErrorToDetails } from "@/app/lib/api/validator";
-import { authenticateRequest } from "@/app/api/v1/auth";
-import { handleErrorResponse } from "@/app/api/v1/auth";
+import { deleteSurvey, getSurvey, updateSurvey } from "@formbricks/lib/survey/service";
+import { TSurvey, ZSurvey } from "@formbricks/types/surveys";
 
-async function fetchAndAuthorizeSurvey(authentication: any, surveyId: string): Promise<TSurvey | null> {
+const fetchAndAuthorizeSurvey = async (authentication: any, surveyId: string): Promise<TSurvey | null> => {
   const survey = await getSurvey(surveyId);
   if (!survey) {
     return null;
@@ -15,12 +13,12 @@ async function fetchAndAuthorizeSurvey(authentication: any, surveyId: string): P
     throw new Error("Unauthorized");
   }
   return survey;
-}
+};
 
-export async function GET(
+export const GET = async (
   request: Request,
   { params }: { params: { surveyId: string } }
-): Promise<NextResponse> {
+): Promise<Response> => {
   try {
     const authentication = await authenticateRequest(request);
     if (!authentication) return responses.notAuthenticatedResponse();
@@ -32,12 +30,12 @@ export async function GET(
   } catch (error) {
     return handleErrorResponse(error);
   }
-}
+};
 
-export async function DELETE(
+export const DELETE = async (
   request: Request,
   { params }: { params: { surveyId: string } }
-): Promise<NextResponse> {
+): Promise<Response> => {
   try {
     const authentication = await authenticateRequest(request);
     if (!authentication) return responses.notAuthenticatedResponse();
@@ -50,12 +48,12 @@ export async function DELETE(
   } catch (error) {
     return handleErrorResponse(error);
   }
-}
+};
 
-export async function PUT(
+export const PUT = async (
   request: Request,
   { params }: { params: { surveyId: string } }
-): Promise<NextResponse> {
+): Promise<Response> => {
   try {
     const authentication = await authenticateRequest(request);
     if (!authentication) return responses.notAuthenticatedResponse();
@@ -63,16 +61,25 @@ export async function PUT(
     if (!survey) {
       return responses.notFoundResponse("Survey", params.surveyId);
     }
-    const surveyUpdate = await request.json();
-    const inputValidation = ZSurvey.safeParse(surveyUpdate);
+    let surveyUpdate;
+    try {
+      surveyUpdate = await request.json();
+    } catch (error) {
+      console.error(`Error parsing JSON input: ${error}`);
+      return responses.badRequestResponse("Malformed JSON input, please check your request body");
+    }
+    const inputValidation = ZSurvey.safeParse({
+      ...survey,
+      ...surveyUpdate,
+    });
     if (!inputValidation.success) {
       return responses.badRequestResponse(
         "Fields are missing or incorrectly formatted",
         transformErrorToDetails(inputValidation.error)
       );
     }
-    return responses.successResponse(await updateSurvey(inputValidation.data));
+    return responses.successResponse(await updateSurvey({ ...inputValidation.data, id: params.surveyId }));
   } catch (error) {
     return handleErrorResponse(error);
   }
-}
+};

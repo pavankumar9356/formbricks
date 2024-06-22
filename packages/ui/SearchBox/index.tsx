@@ -1,8 +1,8 @@
+import { Search } from "lucide-react";
 import * as React from "react";
 import { cn } from "@formbricks/lib/cn";
-import { Search } from "lucide-react";
 
-export interface InputProps
+export interface SearchBoxProps
   extends Omit<React.InputHTMLAttributes<HTMLInputElement>, "crossOrigin" | "dangerouslySetInnerHTML"> {
   crossOrigin?: "" | "anonymous" | "use-credentials" | undefined;
   dangerouslySetInnerHTML?: {
@@ -10,7 +10,7 @@ export interface InputProps
   };
 }
 
-const SearchBox = React.forwardRef<HTMLInputElement, InputProps>(({ className, ...props }, ref) => {
+const SearchBox = React.forwardRef<HTMLInputElement, SearchBoxProps>(({ className, ...props }, ref) => {
   return (
     <div className="relative">
       <input
@@ -22,7 +22,7 @@ const SearchBox = React.forwardRef<HTMLInputElement, InputProps>(({ className, .
         {...props}
       />
       <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-3">
-        <Search className="h-5 w-5 text-gray-400" />
+        <Search className="h-5 w-5 text-slate-400" />
       </div>
     </div>
   );

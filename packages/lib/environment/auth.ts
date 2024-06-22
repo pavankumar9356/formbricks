@@ -1,41 +1,50 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "@formbricks/database";
 import { ZId } from "@formbricks/types/environment";
-import { unstable_cache } from "next/cache";
+import { DatabaseError } from "@formbricks/types/errors";
+import { cache } from "../cache";
+import { organizationCache } from "../organization/cache";
 import { validateInputs } from "../utils/validate";
-import { SERVICES_REVALIDATION_INTERVAL } from "../constants";
-import { getTeamsByUserIdCacheTag } from "../team/service";
-import { revalidateTag } from "next/cache";
 
-export const hasUserEnvironmentAccess = async (userId: string, environmentId: string) => {
-  return await unstable_cache(
+export const hasUserEnvironmentAccess = async (userId: string, environmentId: string) =>
+  cache(
     async (): Promise<boolean> => {
       validateInputs([userId, ZId], [environmentId, ZId]);
-      const environment = await prisma.environment.findUnique({
-        where: {
-          id: environmentId,
-        },
-        select: {
-          product: {
-            select: {
-              team: {
-                select: {
-                  memberships: {
-                    select: {
-                      userId: true,
+
+      try {
+        const environment = await prisma.environment.findUnique({
+          where: {
+            id: environmentId,
+          },
+          select: {
+            product: {
+              select: {
+                organization: {
+                  select: {
+                    memberships: {
+                      select: {
+                        userId: true,
+                      },
                     },
                   },
                 },
               },
             },
           },
-        },
-      });
-      revalidateTag(getTeamsByUserIdCacheTag(userId));
+        });
 
-      const environmentUsers = environment?.product.team.memberships.map((member) => member.userId) || [];
-      return environmentUsers.includes(userId);
+        const environmentUsers =
+          environment?.product.organization.memberships.map((member) => member.userId) || [];
+        return environmentUsers.includes(userId);
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          throw new DatabaseError(error.message);
+        }
+        throw error;
+      }
     },
-    [`users-${userId}-environments-${environmentId}`],
-    { revalidate: SERVICES_REVALIDATION_INTERVAL, tags: [`environments-${environmentId}`] }
+    [`hasUserEnvironmentAccess-${userId}-${environmentId}`],
+    {
+      tags: [organizationCache.tag.byEnvironmentId(environmentId), organizationCache.tag.byUserId(userId)],
+    }
   )();
-};

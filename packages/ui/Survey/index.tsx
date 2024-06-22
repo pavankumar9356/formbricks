@@ -1,126 +1,40 @@
-import { renderSurveyInline, renderSurveyModal } from "@formbricks/surveys";
-import { TResponseData, TResponseUpdate } from "@formbricks/types/responses";
-import { TSurvey } from "@formbricks/types/surveys";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
+import { SurveyInlineProps, SurveyModalProps } from "@formbricks/types/formbricksSurveys";
+import { loadSurveyScript } from "./lib/loadScript";
 
 const createContainerId = () => `formbricks-survey-container`;
-
-interface SurveyProps {
-  survey: TSurvey;
-  brandColor: string;
-  formbricksSignature: boolean;
-  activeQuestionId?: string;
-  onDisplay?: () => void;
-  onResponse?: (response: TResponseUpdate) => void;
-  onFinished?: () => void;
-  onActiveQuestionChange?: (questionId: string) => void;
-  onClose?: () => void;
-  autoFocus?: boolean;
-  prefillResponseData?: TResponseData;
-  isRedirectDisabled?: boolean;
+declare global {
+  interface Window {
+    formbricksSurveys: {
+      renderSurveyInline: (props: SurveyInlineProps) => void;
+      renderSurveyModal: (props: SurveyModalProps) => void;
+    };
+  }
 }
 
-interface SurveyModalProps extends SurveyProps {
-  placement?: "topRight" | "bottomRight" | "bottomLeft" | "topLeft" | "center";
-  clickOutside?: boolean;
-  darkOverlay?: boolean;
-  highlightBorderColor?: string | null;
-}
-
-export const SurveyInline = ({
-  survey,
-  brandColor,
-  formbricksSignature,
-  activeQuestionId,
-  onDisplay = () => {},
-  onResponse = () => {},
-  onActiveQuestionChange = () => {},
-  onClose = () => {},
-  autoFocus,
-  prefillResponseData,
-  isRedirectDisabled,
-}: SurveyProps) => {
+export const SurveyInline = (props: Omit<SurveyInlineProps, "containerId">) => {
   const containerId = useMemo(() => createContainerId(), []);
-  useEffect(() => {
-    renderSurveyInline({
-      survey,
-      brandColor,
-      formbricksSignature,
-      containerId,
-      onDisplay,
-      onResponse,
-      onClose,
-      activeQuestionId,
-      onActiveQuestionChange,
-      autoFocus,
-      prefillResponseData,
-      isRedirectDisabled,
-    });
-  }, [
-    activeQuestionId,
-    brandColor,
-    containerId,
-    formbricksSignature,
-    onActiveQuestionChange,
-    onClose,
-    onDisplay,
-    onResponse,
-    survey,
-    autoFocus,
-    prefillResponseData,
-    isRedirectDisabled,
-  ]);
-  return <div id={containerId} className="h-full w-full" />;
-};
+  const renderInline = useCallback(
+    () => window.formbricksSurveys.renderSurveyInline({ ...props, containerId }),
+    [containerId, props]
+  );
 
-export const SurveyModal = ({
-  survey,
-  brandColor,
-  formbricksSignature,
-  activeQuestionId,
-  placement = "bottomRight",
-  clickOutside = false,
-  darkOverlay = false,
-  highlightBorderColor = null,
-  onDisplay = () => {},
-  onResponse = () => {},
-  onActiveQuestionChange = () => {},
-  onClose = () => {},
-  autoFocus,
-  isRedirectDisabled,
-}: SurveyModalProps) => {
   useEffect(() => {
-    renderSurveyModal({
-      survey,
-      brandColor,
-      formbricksSignature,
-      placement,
-      clickOutside,
-      darkOverlay,
-      highlightBorderColor,
-      onDisplay,
-      onResponse,
-      onClose,
-      activeQuestionId,
-      onActiveQuestionChange,
-      autoFocus,
-      isRedirectDisabled,
-    });
-  }, [
-    activeQuestionId,
-    brandColor,
-    clickOutside,
-    darkOverlay,
-    formbricksSignature,
-    highlightBorderColor,
-    onActiveQuestionChange,
-    onClose,
-    onDisplay,
-    onResponse,
-    placement,
-    survey,
-    autoFocus,
-    isRedirectDisabled,
-  ]);
-  return <div id="formbricks-survey"></div>;
+    const loadScript = async () => {
+      if (!window.formbricksSurveys) {
+        try {
+          await loadSurveyScript();
+          renderInline();
+        } catch (error) {
+          console.error("Failed to load the surveys package: ", error);
+        }
+      } else {
+        renderInline();
+      }
+    };
+
+    loadScript();
+  }, [containerId, props, renderInline]);
+
+  return <div id={containerId} className="h-full w-full" />;
 };

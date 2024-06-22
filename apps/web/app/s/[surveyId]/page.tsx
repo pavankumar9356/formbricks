@@ -1,19 +1,21 @@
-export const revalidate = REVALIDATION_INTERVAL;
-
-import LinkSurvey from "@/app/s/[surveyId]/components/LinkSurvey";
-import SurveyInactive from "@/app/s/[surveyId]/components/SurveyInactive";
-import { REVALIDATION_INTERVAL, WEBAPP_URL } from "@formbricks/lib/constants";
-import { getOrCreatePersonByUserId } from "@formbricks/lib/person/service";
-import { getProductByEnvironmentId } from "@formbricks/lib/product/service";
-import { getSurvey } from "@formbricks/lib/survey/service";
-import { getEmailVerificationStatus } from "./lib/helpers";
-import { checkValidity } from "@/app/s/[surveyId]/lib/prefilling";
-import { notFound } from "next/navigation";
-import { getResponseBySingleUseId } from "@formbricks/lib/response/service";
-import { TResponse } from "@formbricks/types/responses";
 import { validateSurveySingleUseId } from "@/app/lib/singleUseSurveys";
+import { LinkSurvey } from "@/app/s/[surveyId]/components/LinkSurvey";
+import { PinScreen } from "@/app/s/[surveyId]/components/PinScreen";
+import { SurveyInactive } from "@/app/s/[surveyId]/components/SurveyInactive";
+import { getMetadataForLinkSurvey } from "@/app/s/[surveyId]/metadata";
 import type { Metadata } from "next";
-import PinScreen from "@/app/s/[surveyId]/components/PinScreen";
+import { notFound } from "next/navigation";
+import { getMultiLanguagePermission } from "@formbricks/ee/lib/service";
+import { getAttributeClasses } from "@formbricks/lib/attributeClass/service";
+import { IMPRINT_URL, IS_FORMBRICKS_CLOUD, PRIVACY_URL, WEBAPP_URL } from "@formbricks/lib/constants";
+import { getOrganizationByEnvironmentId } from "@formbricks/lib/organization/service";
+import { createPerson, getPersonByUserId } from "@formbricks/lib/person/service";
+import { getProductByEnvironmentId } from "@formbricks/lib/product/service";
+import { getResponseBySingleUseId, getResponseCountBySurveyId } from "@formbricks/lib/response/service";
+import { getSurvey } from "@formbricks/lib/survey/service";
+import { ZId } from "@formbricks/types/environment";
+import { TResponse } from "@formbricks/types/responses";
+import { getEmailVerificationDetails } from "./lib/helpers";
 
 interface LinkSurveyPageProps {
   params: {
@@ -23,68 +25,42 @@ interface LinkSurveyPageProps {
     suId?: string;
     userId?: string;
     verify?: string;
+    lang?: string;
+    embed?: string;
   };
 }
 
-export async function generateMetadata({ params }: LinkSurveyPageProps): Promise<Metadata> {
-  const survey = await getSurvey(params.surveyId);
-
-  if (!survey || survey.type !== "link" || survey.status === "draft") {
+export const generateMetadata = async ({ params }: LinkSurveyPageProps): Promise<Metadata> => {
+  const validId = ZId.safeParse(params.surveyId);
+  if (!validId.success) {
     notFound();
   }
 
-  const product = await getProductByEnvironmentId(survey.environmentId);
+  return getMetadataForLinkSurvey(params.surveyId);
+};
 
-  if (!product) {
-    throw new Error("Product not found");
+const Page = async ({ params, searchParams }: LinkSurveyPageProps) => {
+  const validId = ZId.safeParse(params.surveyId);
+  if (!validId.success) {
+    notFound();
   }
-
-  function getNameForURL(string) {
-    return string.replace(/ /g, "%20");
-  }
-
-  function getBrandColorForURL(string) {
-    return string.replace(/#/g, "%23");
-  }
-
-  const brandColor = getBrandColorForURL(product.brandColor);
-  const surveyName = getNameForURL(survey.name);
-
-  const ogImgURL = `${WEBAPP_URL}/api/v1/og?brandColor=${brandColor}&name=${surveyName}`;
-
-  return {
-    openGraph: {
-      title: survey.name,
-      description: "Create your own survey like this with Formbricks' open source survey suite.",
-      url: `${WEBAPP_URL}/${survey.id}`,
-      siteName: "",
-      images: [ogImgURL],
-      locale: "en_US",
-      type: "website",
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: survey.name,
-      description: "Create your own survey like this with Formbricks' open source survey suite.",
-      images: [ogImgURL],
-    },
-  };
-}
-
-export default async function LinkSurveyPage({ params, searchParams }: LinkSurveyPageProps) {
   const survey = await getSurvey(params.surveyId);
 
   const suId = searchParams.suId;
+  const langParam = searchParams.lang; //can either be language code or alias
   const isSingleUseSurvey = survey?.singleUse?.enabled;
   const isSingleUseSurveyEncrypted = survey?.singleUse?.isEncrypted;
+  const isEmbed = searchParams.embed === "true" ? true : false;
 
   if (!survey || survey.type !== "link" || survey.status === "draft") {
     notFound();
   }
 
-  // question pre filling: Check if the first question is prefilled and if it is valid
-  const prefillAnswer = searchParams[survey.questions[0].id];
-  const isPrefilledAnswerValid = prefillAnswer ? checkValidity(survey!.questions[0], prefillAnswer) : false;
+  const organization = await getOrganizationByEnvironmentId(survey?.environmentId);
+  if (!organization) {
+    throw new Error("Organization not found");
+  }
+  const isMultiLanguageAllowed = await getMultiLanguagePermission(organization);
 
   if (survey && survey.status !== "inProgress") {
     return (
@@ -126,7 +102,9 @@ export default async function LinkSurveyPage({ params, searchParams }: LinkSurve
   }
 
   // verify email: Check if the survey requires email verification
-  let emailVerificationStatus: string | undefined = undefined;
+  let emailVerificationStatus: string = "";
+  let verifiedEmail: string | undefined = undefined;
+
   if (survey.verifyEmail) {
     const token =
       searchParams && Object.keys(searchParams).length !== 0 && searchParams.hasOwnProperty("verify")
@@ -134,7 +112,9 @@ export default async function LinkSurveyPage({ params, searchParams }: LinkSurve
         : undefined;
 
     if (token) {
-      emailVerificationStatus = await getEmailVerificationStatus(survey.id, token);
+      const emailVerificationDetails = await getEmailVerificationDetails(survey.id, token);
+      emailVerificationStatus = emailVerificationDetails.status;
+      verifiedEmail = emailVerificationDetails.email;
     }
   }
 
@@ -144,39 +124,78 @@ export default async function LinkSurveyPage({ params, searchParams }: LinkSurve
     throw new Error("Product not found");
   }
 
+  const attributeClasses = await getAttributeClasses(survey.environmentId);
+
+  const getLanguageCode = (): string => {
+    if (!langParam || !isMultiLanguageAllowed) return "default";
+    else {
+      const selectedLanguage = survey.languages.find((surveyLanguage) => {
+        return (
+          surveyLanguage.language.code === langParam.toLowerCase() ||
+          surveyLanguage.language.alias?.toLowerCase() === langParam.toLowerCase()
+        );
+      });
+      if (selectedLanguage?.default || !selectedLanguage?.enabled) {
+        return "default";
+      }
+      return selectedLanguage ? selectedLanguage.language.code : "default";
+    }
+  };
+
+  const languageCode = getLanguageCode();
+
   const userId = searchParams.userId;
-  let person;
   if (userId) {
-    person = await getOrCreatePersonByUserId(userId, survey.environmentId);
+    // make sure the person exists or get's created
+    const person = await getPersonByUserId(survey.environmentId, userId);
+    if (!person) {
+      await createPerson(survey.environmentId, userId);
+    }
   }
 
   const isSurveyPinProtected = Boolean(!!survey && survey.pin);
+  const responseCount = await getResponseCountBySurveyId(survey.id);
 
   if (isSurveyPinProtected) {
     return (
       <PinScreen
         surveyId={survey.id}
         product={product}
-        personId={person?.id}
+        userId={userId}
         emailVerificationStatus={emailVerificationStatus}
-        prefillAnswer={isPrefilledAnswerValid ? prefillAnswer : null}
         singleUseId={isSingleUseSurvey ? singleUseId : undefined}
         singleUseResponse={singleUseResponse ? singleUseResponse : undefined}
         webAppUrl={WEBAPP_URL}
+        IMPRINT_URL={IMPRINT_URL}
+        PRIVACY_URL={PRIVACY_URL}
+        IS_FORMBRICKS_CLOUD={IS_FORMBRICKS_CLOUD}
+        verifiedEmail={verifiedEmail}
+        languageCode={languageCode}
+        attributeClasses={attributeClasses}
+        isEmbed={isEmbed}
       />
     );
   }
 
-  return (
+  return survey ? (
     <LinkSurvey
       survey={survey}
       product={product}
-      personId={person?.id}
+      userId={userId}
       emailVerificationStatus={emailVerificationStatus}
-      prefillAnswer={isPrefilledAnswerValid ? prefillAnswer : null}
       singleUseId={isSingleUseSurvey ? singleUseId : undefined}
       singleUseResponse={singleUseResponse ? singleUseResponse : undefined}
       webAppUrl={WEBAPP_URL}
+      responseCount={survey.welcomeCard.showResponseCount ? responseCount : undefined}
+      verifiedEmail={verifiedEmail}
+      languageCode={languageCode}
+      attributeClasses={attributeClasses}
+      isEmbed={isEmbed}
+      IMPRINT_URL={IMPRINT_URL}
+      PRIVACY_URL={PRIVACY_URL}
+      IS_FORMBRICKS_CLOUD={IS_FORMBRICKS_CLOUD}
     />
-  );
-}
+  ) : null;
+};
+
+export default Page;

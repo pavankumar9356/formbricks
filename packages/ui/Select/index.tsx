@@ -1,9 +1,8 @@
 "use client";
 
-import * as React from "react";
 import * as SelectPrimitive from "@radix-ui/react-select";
-import { /* Check, */ ChevronDown } from "lucide-react";
-
+import { ChevronDown } from "lucide-react";
+import * as React from "react";
 import { cn } from "@formbricks/lib/cn";
 
 const Select: React.ComponentType<SelectPrimitive.SelectProps> = SelectPrimitive.Root;
@@ -12,10 +11,10 @@ const SelectGroup: React.ComponentType<SelectPrimitive.SelectGroupProps> = Selec
 
 const SelectValue: React.ComponentType<SelectPrimitive.SelectValueProps> = SelectPrimitive.Value;
 
-const SelectTrigger: React.ComponentType<SelectPrimitive.SelectTriggerProps> = React.forwardRef<
+const SelectTrigger = React.forwardRef<
   React.ElementRef<typeof SelectPrimitive.Trigger>,
-  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>
->(({ className, children, ...props }, ref) => (
+  React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger> & { hideArrow?: boolean }
+>(({ className, hideArrow, children, ...props }, ref) => (
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
@@ -24,7 +23,7 @@ const SelectTrigger: React.ComponentType<SelectPrimitive.SelectTriggerProps> = R
     )}
     {...props}>
     {children}
-    <ChevronDown className="h-4 w-4 opacity-50" />
+    {!hideArrow ? <ChevronDown className="h-4 w-4 opacity-50" /> : null}
   </SelectPrimitive.Trigger>
 ));
 SelectTrigger.displayName = SelectPrimitive.Trigger.displayName;
@@ -70,12 +69,6 @@ const SelectItem: React.ComponentType<SelectPrimitive.SelectItemProps> = React.f
       className
     )}
     {...props}>
-    {/*     <span className="absolute left-2 flex h-3.5 w-3.5 items-center justify-center">
-      <SelectPrimitive.ItemIndicator>
-        <Check className="h-4 w-4" />
-      </SelectPrimitive.ItemIndicator>
-    </span> */}
-
     <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
   </SelectPrimitive.Item>
 ));
@@ -95,11 +88,11 @@ SelectSeparator.displayName = SelectPrimitive.Separator.displayName;
 
 export {
   Select,
-  SelectGroup,
-  SelectValue,
-  SelectTrigger,
   SelectContent,
-  SelectLabel,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectSeparator,
+  SelectTrigger,
+  SelectValue,
 };

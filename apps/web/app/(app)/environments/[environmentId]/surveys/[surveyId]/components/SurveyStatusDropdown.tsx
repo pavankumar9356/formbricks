@@ -1,60 +1,58 @@
-"use client";
-
-import { updateSurveyAction } from "@/app/(app)/environments/[environmentId]/surveys/[surveyId]/edit/actions";
-import { SurveyStatusIndicator } from "@formbricks/ui/SurveyStatusIndicator";
+import { CheckCircle2Icon, PauseCircleIcon, PlayCircleIcon } from "lucide-react";
+import toast from "react-hot-toast";
 import { TEnvironment } from "@formbricks/types/environment";
 import { TSurvey } from "@formbricks/types/surveys";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@formbricks/ui/Select";
+import { SurveyStatusIndicator } from "@formbricks/ui/SurveyStatusIndicator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@formbricks/ui/Tooltip";
-import { CheckCircleIcon, PauseCircleIcon, PlayCircleIcon } from "@heroicons/react/24/solid";
-import toast from "react-hot-toast";
+import { updateSurveyAction } from "../actions";
 
-export default function SurveyStatusDropdown({
+interface SurveyStatusDropdownProps {
+  environment: TEnvironment;
+  updateLocalSurveyStatus?: (status: TSurvey["status"]) => void;
+  survey: TSurvey;
+}
+
+export const SurveyStatusDropdown = ({
   environment,
   updateLocalSurveyStatus,
   survey,
-}: {
-  environment: TEnvironment;
-  updateLocalSurveyStatus?: (status: "draft" | "inProgress" | "paused" | "completed" | "archived") => void;
-  survey: TSurvey;
-}) {
+}: SurveyStatusDropdownProps) => {
   const isCloseOnDateEnabled = survey.closeOnDate !== null;
   const closeOnDate = survey.closeOnDate ? new Date(survey.closeOnDate) : null;
-  const isStatusChangeDisabled = (isCloseOnDateEnabled && closeOnDate && closeOnDate < new Date()) ?? false;
+  const isStatusChangeDisabled =
+    (survey.status === "scheduled" || (isCloseOnDateEnabled && closeOnDate && closeOnDate < new Date())) ??
+    false;
 
   return (
     <>
       {survey.status === "draft" ? (
         <div className="flex items-center">
-          {(survey.type === "link" || environment.widgetSetupCompleted) && (
-            <SurveyStatusIndicator status={survey.status} />
-          )}
-          {survey.status === "draft" && <p className="text-sm italic text-slate-600">Draft</p>}
+          <p className="text-sm italic text-slate-600">Draft</p>
         </div>
       ) : (
         <Select
           value={survey.status}
           disabled={isStatusChangeDisabled}
           onValueChange={(value) => {
-            const castedValue = value as "draft" | "inProgress" | "paused" | "completed";
+            const castedValue = value as TSurvey["status"];
             updateSurveyAction({ ...survey, status: castedValue })
               .then(() => {
                 toast.success(
                   value === "inProgress"
                     ? "Survey live"
                     : value === "paused"
-                    ? "Survey paused"
-                    : value === "completed"
-                    ? "Survey completed"
-                    : ""
+                      ? "Survey paused"
+                      : value === "completed"
+                        ? "Survey completed"
+                        : ""
                 );
               })
               .catch((error) => {
                 toast.error(`Error: ${error.message}`);
               });
 
-            if (updateLocalSurveyStatus)
-              updateLocalSurveyStatus(value as "draft" | "inProgress" | "paused" | "completed" | "archived");
+            if (updateLocalSurveyStatus) updateLocalSurveyStatus(value as TSurvey["status"]);
           }}>
           <TooltipProvider delayDuration={50}>
             <Tooltip open={isStatusChangeDisabled ? undefined : false}>
@@ -62,10 +60,13 @@ export default function SurveyStatusDropdown({
                 <SelectTrigger className="w-[170px] bg-white py-6 md:w-[200px]">
                   <SelectValue>
                     <div className="flex items-center">
-                      {(survey.type === "link" || environment.widgetSetupCompleted) && (
+                      {(survey.type === "link" ||
+                        environment.appSetupCompleted ||
+                        environment.websiteSetupCompleted) && (
                         <SurveyStatusIndicator status={survey.status} />
                       )}
                       <span className="ml-2 text-sm text-slate-700">
+                        {survey.status === "scheduled" && "Scheduled"}
                         {survey.status === "inProgress" && "In-progress"}
                         {survey.status === "paused" && "Paused"}
                         {survey.status === "completed" && "Completed"}
@@ -84,14 +85,14 @@ export default function SurveyStatusDropdown({
                   Paused
                 </SelectItem>
                 <SelectItem className="group  font-normal hover:text-slate-900" value="completed">
-                  <CheckCircleIcon className="-mt-1 mr-1 inline h-5 w-5 text-slate-500 group-hover:text-slate-800" />
+                  <CheckCircle2Icon className="-mt-1 mr-1 inline h-5 w-5 text-slate-500 group-hover:text-slate-800" />
                   Completed
                 </SelectItem>
               </SelectContent>
 
               <TooltipContent>
-                To update the survey status, update the &ldquo;Close
-                <br /> survey on date&rdquo; setting in the Response Options.
+                To update the survey status, update the schedule and close setting in the survey response
+                options.
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -99,4 +100,4 @@ export default function SurveyStatusDropdown({
       )}
     </>
   );
-}
+};

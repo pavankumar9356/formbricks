@@ -1,45 +1,54 @@
 "use client";
 
-import { PasswordInput } from "@formbricks/ui/PasswordInput";
-import { Button } from "@formbricks/ui/Button";
-import { XCircleIcon } from "@heroicons/react/24/solid";
+import { TwoFactor } from "@/app/(auth)/auth/login/components/TwoFactor";
+import { TwoFactorBackup } from "@/app/(auth)/auth/login/components/TwoFactorBackup";
+import { XCircleIcon } from "lucide-react";
 import { signIn } from "next-auth/react";
 import Link from "next/dist/client/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
-import { Controller, SubmitHandler, useForm, FormProvider } from "react-hook-form";
-
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Controller, FormProvider, SubmitHandler, useForm } from "react-hook-form";
 import { cn } from "@formbricks/lib/cn";
-import { GithubButton } from "@/app/(auth)/auth/components/GithubButton";
-import { GoogleButton } from "@/app/(auth)/auth/components/GoogleButton";
-import { AzureButton } from "@/app/(auth)/auth/components/AzureButton";
-import TwoFactor from "@/app/(auth)/auth/login/components/TwoFactor";
-import TwoFactorBackup from "@/app/(auth)/auth/login/components/TwoFactorBackup";
+import { Button } from "@formbricks/ui/Button";
+import { PasswordInput } from "@formbricks/ui/PasswordInput";
+import { AzureButton } from "@formbricks/ui/SignupOptions/components/AzureButton";
+import { GithubButton } from "@formbricks/ui/SignupOptions/components/GithubButton";
+import { GoogleButton } from "@formbricks/ui/SignupOptions/components/GoogleButton";
+import { OpenIdButton } from "@formbricks/ui/SignupOptions/components/OpenIdButton";
 
-type TSigninFormState = {
+interface TSigninFormState {
   email: string;
   password: string;
   totpCode: string;
   backupCode: string;
-};
+}
 
-export const SigninForm = ({
-  publicSignUpEnabled,
-  passwordResetEnabled,
-  googleOAuthEnabled,
-  githubOAuthEnabled,
-  azureOAuthEnabled,
-}: {
+interface SignInFormProps {
+  emailAuthEnabled: boolean;
   publicSignUpEnabled: boolean;
   passwordResetEnabled: boolean;
   googleOAuthEnabled: boolean;
   githubOAuthEnabled: boolean;
   azureOAuthEnabled: boolean;
-}) => {
+  oidcOAuthEnabled: boolean;
+  oidcDisplayName?: string;
+  isMultiOrgEnabled: boolean;
+}
+
+export const SigninForm = ({
+  emailAuthEnabled,
+  publicSignUpEnabled,
+  passwordResetEnabled,
+  googleOAuthEnabled,
+  githubOAuthEnabled,
+  azureOAuthEnabled,
+  oidcOAuthEnabled,
+  oidcDisplayName,
+  isMultiOrgEnabled,
+}: SignInFormProps) => {
   const router = useRouter();
   const searchParams = useSearchParams();
   const emailRef = useRef<HTMLInputElement>(null);
-
   const formMethods = useForm<TSigninFormState>();
 
   const onSubmit: SubmitHandler<TSigninFormState> = async (data) => {
@@ -48,7 +57,7 @@ export const SigninForm = ({
     try {
       const signInResponse = await signIn("credentials", {
         callbackUrl: searchParams?.get("callbackUrl") || "/",
-        email: data.email,
+        email: data.email.toLowerCase(),
         password: data.password,
         ...(totpLogin && { totpCode: data.totpCode }),
         ...(totpBackup && { backupCode: data.backupCode }),
@@ -58,6 +67,11 @@ export const SigninForm = ({
       if (signInResponse?.error === "second factor required") {
         setTotpLogin(true);
         setLoggingIn(false);
+        return;
+      }
+
+      if (signInResponse?.error === "Email Verification is Pending") {
+        router.push(`/auth/verification-requested?email=${data.email}`);
         return;
       }
 
@@ -88,9 +102,15 @@ export const SigninForm = ({
   const [totpBackup, setTotpBackup] = useState(false);
   const [signInError, setSignInError] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
-
+  const error = searchParams?.get("error");
   const callbackUrl = searchParams?.get("callbackUrl");
   const inviteToken = callbackUrl ? new URL(callbackUrl).searchParams.get("token") : null;
+
+  useEffect(() => {
+    if (error) {
+      setSignInError(error);
+    }
+  }, [error]);
 
   const formLabel = useMemo(() => {
     if (totpBackup) {
@@ -179,21 +199,23 @@ export const SigninForm = ({
                 )}
               </div>
             )}
-            <Button
-              onClick={() => {
-                if (!showLogin) {
-                  setShowLogin(true);
-                  // Add a slight delay before focusing the input field to ensure it's visible
-                  setTimeout(() => emailRef.current?.focus(), 100);
-                } else if (formRef.current) {
-                  formRef.current.requestSubmit();
-                }
-              }}
-              variant="darkCTA"
-              className="w-full justify-center"
-              loading={loggingIn}>
-              {totpLogin ? "Submit" : "Login with Email"}
-            </Button>
+            {emailAuthEnabled && (
+              <Button
+                onClick={() => {
+                  if (!showLogin) {
+                    setShowLogin(true);
+                    // Add a slight delay before focusing the input field to ensure it's visible
+                    setTimeout(() => emailRef.current?.focus(), 100);
+                  } else if (formRef.current) {
+                    formRef.current.requestSubmit();
+                  }
+                }}
+                variant="darkCTA"
+                className="w-full justify-center"
+                loading={loggingIn}>
+                {totpLogin ? "Submit" : "Login with Email"}
+              </Button>
+            )}
           </form>
 
           {googleOAuthEnabled && !totpLogin && (
@@ -213,14 +235,20 @@ export const SigninForm = ({
               <AzureButton inviteUrl={callbackUrl} />
             </>
           )}
+
+          {oidcOAuthEnabled && !totpLogin && (
+            <>
+              <OpenIdButton inviteUrl={callbackUrl} text={`Continue with ${oidcDisplayName}`} />
+            </>
+          )}
         </div>
 
-        {publicSignUpEnabled && !totpLogin && (
+        {publicSignUpEnabled && !totpLogin && isMultiOrgEnabled && (
           <div className="mt-9 text-center text-xs ">
             <span className="leading-5 text-slate-500">New to Formbricks?</span>
             <br />
             <Link
-              href={callbackUrl ? `/auth/signup?inviteToken=${inviteToken}` : "/auth/signup"}
+              href={inviteToken ? `/auth/signup?inviteToken=${inviteToken}` : "/auth/signup"}
               className="font-semibold text-slate-600 underline hover:text-slate-700">
               Create an account
             </Link>
@@ -234,6 +262,7 @@ export const SigninForm = ({
           <br />
           <div className="flex flex-col">
             <button
+              type="button"
               className="font-semibold text-slate-600 underline hover:text-slate-700"
               onClick={() => {
                 setTotpBackup(true);
@@ -242,6 +271,7 @@ export const SigninForm = ({
             </button>
 
             <button
+              type="button"
               className="mt-4 font-semibold text-slate-600 underline hover:text-slate-700"
               onClick={() => {
                 setTotpLogin(false);
@@ -255,6 +285,7 @@ export const SigninForm = ({
       {totpBackup && (
         <div className="mt-9 text-center text-xs">
           <button
+            type="button"
             className="font-semibold text-slate-600 underline hover:text-slate-700"
             onClick={() => {
               setTotpBackup(false);

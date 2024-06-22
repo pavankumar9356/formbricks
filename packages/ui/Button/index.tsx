@@ -1,7 +1,8 @@
-import { cn } from "@formbricks/lib/cn";
 import { LucideIcon } from "lucide-react";
 import Link, { LinkProps } from "next/link";
 import React, { AnchorHTMLAttributes, ButtonHTMLAttributes, forwardRef } from "react";
+import { cn } from "@formbricks/lib/cn";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../Tooltip";
 
 type SVGComponent = React.FunctionComponent<React.SVGProps<SVGSVGElement>> | LucideIcon;
 
@@ -16,6 +17,9 @@ export type ButtonBaseProps = {
   EndIcon?: SVGComponent | React.ComponentType<React.ComponentProps<"svg">>;
   endIconClassName?: string;
   shallow?: boolean;
+  tooltip?: string;
+  tooltipSide?: "top" | "right" | "bottom" | "left";
+  tooltipOffset?: number;
 };
 type ButtonBasePropsWithTarget = ButtonBaseProps & { target?: string };
 
@@ -27,10 +31,7 @@ export type ButtonProps = ButtonBasePropsWithTarget &
 
 export const Button: React.ForwardRefExoticComponent<
   React.PropsWithoutRef<ButtonProps> & React.RefAttributes<HTMLAnchorElement | HTMLButtonElement>
-> = forwardRef<HTMLAnchorElement | HTMLButtonElement, ButtonProps>(function Button(
-  props: ButtonProps,
-  forwardedRef
-) {
+> = forwardRef<HTMLAnchorElement | HTMLButtonElement, ButtonProps>((props: ButtonProps, forwardedRef) => {
   const {
     loading = false,
     variant = "primary",
@@ -40,6 +41,8 @@ export const Button: React.ForwardRefExoticComponent<
     endIconClassName,
     EndIcon,
     shallow,
+    tooltipSide = "top",
+    tooltipOffset = 4,
     // attributes propagated from `HTMLAnchorProps` or `HTMLButtonProps`
     ...passThroughProps
   } = props;
@@ -62,7 +65,7 @@ export const Button: React.ForwardRefExoticComponent<
         // different styles depending on size
         size === "sm" && "px-3 py-2 text-sm leading-4 font-medium rounded-md",
         size === "base" && "px-6 py-3 text-sm font-medium rounded-md",
-        size === "lg" && "px-4 py-2 text-base font-medium rounded-md",
+        size === "lg" && "px-8 py-4 text-base font-medium rounded-md",
         size === "icon" &&
           "w-10 h-10 justify-center group p-2 border rounded-lg border-transparent text-neutral-400 hover:border-slate-200 transition",
         // turn button into a floating action button (fab)
@@ -82,7 +85,7 @@ export const Button: React.ForwardRefExoticComponent<
         variant === "minimal" &&
           (disabled
             ? "border border-slate-200 text-slate-400"
-            : "hover:text-slate-600 text-slate-700  focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-neutral-900 dark:text-slate-700 dark:hover:text-slate-500"),
+            : "hover:text-slate-600 text-slate-700 border border-transparent focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-neutral-900 dark:text-slate-700 dark:hover:text-slate-500"),
         variant === "alert" &&
           (disabled
             ? "border border-transparent bg-slate-400 text-white"
@@ -149,6 +152,41 @@ export const Button: React.ForwardRefExoticComponent<
       {element}
     </Link>
   ) : (
-    element
+    <Wrapper
+      data-testid="wrapper"
+      tooltip={props.tooltip}
+      tooltipSide={tooltipSide}
+      tooltipOffset={tooltipOffset}>
+      {element}
+    </Wrapper>
   );
 });
+
+const Wrapper = ({
+  children,
+  tooltip,
+  tooltipSide = "top",
+  tooltipOffset = 0,
+}: {
+  tooltip?: string;
+  children: React.ReactNode;
+  tooltipSide?: "top" | "right" | "bottom" | "left";
+  tooltipOffset?: number;
+}) => {
+  if (!tooltip) {
+    return <>{children}</>;
+  }
+
+  return (
+    <TooltipProvider delayDuration={0}>
+      <Tooltip>
+        <TooltipTrigger asChild>{children}</TooltipTrigger>
+        <TooltipContent side={tooltipSide} sideOffset={tooltipOffset}>
+          {tooltip}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+};
+
+Button.displayName = "Button";

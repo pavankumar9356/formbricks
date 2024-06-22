@@ -1,10 +1,15 @@
 import z from "zod";
 
-export const ZEventProperties = z.record(z.string());
+export const ZActionProperties = z.record(z.string());
 export { ZActionClassNoCodeConfig } from "@formbricks/types/actionClasses";
 export { ZIntegrationConfig } from "@formbricks/types/integration";
 
-export { ZResponseData, ZResponsePersonAttributes, ZResponseMeta } from "@formbricks/types/responses";
+export {
+  ZResponseData,
+  ZResponsePersonAttributes,
+  ZResponseMeta,
+  ZResponseTtc,
+} from "@formbricks/types/responses";
 
 export {
   ZSurveyWelcomeCard,
@@ -13,8 +18,12 @@ export {
   ZSurveyHiddenFields,
   ZSurveyClosedMessage,
   ZSurveyProductOverwrites,
+  ZSurveyStyling,
   ZSurveyVerifyEmail,
   ZSurveySingleUse,
+  ZSurveyInlineTriggers,
 } from "@formbricks/types/surveys";
 
-export { ZUserNotificationSettings } from "@formbricks/types/users";
+export { ZSegmentFilters } from "@formbricks/types/segment";
+export { ZOrganizationBilling } from "@formbricks/types/organizations";
+export { ZUserNotificationSettings } from "@formbricks/types/user";

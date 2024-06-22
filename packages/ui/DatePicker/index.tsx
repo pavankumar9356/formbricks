@@ -1,22 +1,22 @@
 "use client";
 
-import { CalendarIcon } from "lucide-react";
 import { format } from "date-fns";
-import { cn } from "@formbricks/lib/cn";
-import { Popover, PopoverContent, PopoverTrigger } from "../Popover";
-import { Button } from "../Button";
-import { Calendar } from "../Calendar";
+import { addDays } from "date-fns";
+import { CalendarIcon } from "lucide-react";
 import { useRef } from "react";
 import { SelectSingleEventHandler } from "react-day-picker";
-import { addDays } from "date-fns";
+import { cn } from "@formbricks/lib/cn";
+import { Button } from "../Button";
+import { Calendar } from "../Calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "../Popover";
 
-export function DatePicker({
+export const DatePicker = ({
   date,
   handleDateChange,
 }: {
-  date?: Date;
+  date?: Date | null;
   handleDateChange: (date?: Date) => void;
-}) {
+}) => {
   let formattedDate = date ? new Date(date) : undefined;
 
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -53,4 +53,4 @@ export function DatePicker({
       </PopoverContent>
     </Popover>
   );
-}
+};

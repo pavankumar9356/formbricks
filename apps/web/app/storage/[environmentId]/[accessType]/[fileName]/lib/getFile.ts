@@ -1,12 +1,12 @@
-import { env } from "@/env.mjs";
 import { responses } from "@/app/lib/api/response";
-import { UPLOADS_DIR } from "@formbricks/lib/constants";
-import { getLocalFile, getS3File } from "@formbricks/lib/storage/service";
 import { notFound } from "next/navigation";
 import path from "path";
+import { UPLOADS_DIR } from "@formbricks/lib/constants";
+import { isS3Configured } from "@formbricks/lib/constants";
+import { getLocalFile, getS3File } from "@formbricks/lib/storage/service";
 
-const getFile = async (environmentId: string, accessType: string, fileName: string) => {
-  if (!env.S3_ACCESS_KEY || !env.S3_SECRET_KEY || !env.S3_REGION || !env.S3_BUCKET_NAME) {
+export const getFile = async (environmentId: string, accessType: string, fileName: string) => {
+  if (!isS3Configured()) {
     try {
       const { fileBuffer, metaData } = await getLocalFile(
         path.join(UPLOADS_DIR, environmentId, accessType, fileName)
@@ -15,7 +15,9 @@ const getFile = async (environmentId: string, accessType: string, fileName: stri
       return new Response(fileBuffer, {
         headers: {
           "Content-Type": metaData.contentType,
-          "Content-Disposition": "inline",
+          "Content-Disposition": "attachment",
+          "Cache-Control": "public, max-age=1200, s-maxage=1200, stale-while-revalidate=300",
+          Vary: "Accept-Encoding",
         },
       });
     } catch (err) {
@@ -30,6 +32,8 @@ const getFile = async (environmentId: string, accessType: string, fileName: stri
       status: 302,
       headers: {
         Location: signedUrl,
+        // public file, cache for one hour, private file, cache for 10 minutes
+        "Cache-Control": `public, max-age=${accessType === "public" ? 3600 : 600}, s-maxage=3600, stale-while-revalidate=300`,
       },
     });
   } catch (err) {
@@ -40,5 +44,3 @@ const getFile = async (environmentId: string, accessType: string, fileName: stri
     }
   }
 };
-
-export default getFile;

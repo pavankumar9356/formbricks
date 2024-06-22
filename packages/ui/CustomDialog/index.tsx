@@ -1,7 +1,7 @@
 "use client";
 
-import { Modal } from "../Modal";
 import { Button } from "../Button";
+import { Modal } from "../Modal";
 
 interface CustomDialogProps {
   open: boolean;
@@ -17,7 +17,7 @@ interface CustomDialogProps {
   disabled?: boolean;
 }
 
-export default function CustomDialog({
+export const CustomDialog = ({
   open,
   setOpen,
   title,
@@ -29,7 +29,7 @@ export default function CustomDialog({
   onCancel,
   cancelBtnText,
   disabled,
-}: CustomDialogProps) {
+}: CustomDialogProps) => {
   return (
     <Modal open={open} setOpen={setOpen} title={title}>
       <p>{text}</p>
@@ -51,4 +51,4 @@ export default function CustomDialog({
       </div>
     </Modal>
   );
-}
+};

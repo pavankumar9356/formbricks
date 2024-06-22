@@ -1,8 +1,8 @@
-import { Label } from "@formbricks/ui/Label";
 import { convertDateTimeStringShort } from "@formbricks/lib/time";
-import { TWebhook } from "@formbricks/types/webhooks";
+import { capitalizeFirstLetter } from "@formbricks/lib/utils/strings";
 import { TSurvey } from "@formbricks/types/surveys";
-import { capitalizeFirstLetter } from "@/app/lib/utils";
+import { TWebhook } from "@formbricks/types/webhooks";
+import { Label } from "@formbricks/ui/Label";
 
 interface ActivityTabProps {
   webhook: TWebhook;
@@ -33,7 +33,7 @@ const convertTriggerIdToName = (triggerId: string): string => {
   }
 };
 
-export default function WebhookOverviewTab({ webhook, surveys }: ActivityTabProps) {
+export const WebhookOverviewTab = ({ webhook, surveys }: ActivityTabProps) => {
   return (
     <div className="grid grid-cols-3 pb-2">
       <div className="col-span-2 space-y-4 pr-6">
@@ -88,4 +88,4 @@ export default function WebhookOverviewTab({ webhook, surveys }: ActivityTabProp
       </div>
     </div>
   );
-}
+};

@@ -3,12 +3,13 @@ import { responses } from "@/app/lib/api/response";
 import { deletePerson, getPerson } from "@formbricks/lib/person/service";
 import { TAuthenticationApiKey } from "@formbricks/types/auth";
 import { TPerson } from "@formbricks/types/people";
-import { NextResponse } from "next/server";
 
-async function fetchAndAuthorizePerson(
+// Please use the methods provided by the client API to update a person
+
+const fetchAndAuthorizePerson = async (
   authentication: TAuthenticationApiKey,
   personId: string
-): Promise<TPerson | null> {
+): Promise<TPerson | null> => {
   const person = await getPerson(personId);
   if (!person) {
     return null;
@@ -17,12 +18,12 @@ async function fetchAndAuthorizePerson(
     throw new Error("Unauthorized");
   }
   return person;
-}
+};
 
-export async function GET(
+export const GET = async (
   request: Request,
   { params }: { params: { personId: string } }
-): Promise<NextResponse> {
+): Promise<Response> => {
   try {
     const authentication = await authenticateRequest(request);
     if (!authentication) return responses.notAuthenticatedResponse();
@@ -34,34 +35,9 @@ export async function GET(
   } catch (error) {
     return handleErrorResponse(error);
   }
-}
+};
 
-// Please use the methods provided by the client API to update a person
-
-/* export async function PUT(
-  request: Request,
-  { params }: { params: { personId: string } }
-): Promise<NextResponse> {
-  try {
-    const authentication = await authenticateRequest(request);
-    if (!authentication) return responses.notAuthenticatedResponse();
-    await fetchAndAuthorizePerson(authentication, params.personId);
-
-    const personUpdate = await request.json();
-    const inputValidation = ZPersonUpdateInput.safeParse(personUpdate);
-    if (!inputValidation.success) {
-      return responses.badRequestResponse(
-        "Fields are missing or incorrectly formatted",
-        transformErrorToDetails(inputValidation.error)
-      );
-    }
-    return responses.successResponse(await updatePerson(params.personId, inputValidation.data));
-  } catch (error) {
-    return handleErrorResponse(error);
-  }
-} */
-
-export async function DELETE(request: Request, { params }: { params: { personId: string } }) {
+export const DELETE = async (request: Request, { params }: { params: { personId: string } }) => {
   try {
     const authentication = await authenticateRequest(request);
     if (!authentication) return responses.notAuthenticatedResponse();
@@ -74,4 +50,4 @@ export async function DELETE(request: Request, { params }: { params: { personId:
   } catch (error) {
     return handleErrorResponse(error);
   }
-}
+};

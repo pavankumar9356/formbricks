@@ -71,17 +71,11 @@ export const wrap =
  *  console.log(error); // Error: error happened
  * });
  */
-export function match<TSuccess, TError, TReturn>(
+export const match = <TSuccess, TError, TReturn>(
   result: Result<TSuccess, TError>,
   onSuccess: (value: TSuccess) => TReturn,
   onError: (error: TError) => TReturn
-): TReturn {
-  if (result.ok === true) {
-    return onSuccess(result.data);
-  }
-
-  return onError(result.error);
-}
+): TReturn => (result.ok === true ? onSuccess(result.data) : onError(result.error));
 
 /**
  * Wraps a function `fn` that may throw an error into a new function that returns a `Result` object.
@@ -120,6 +114,22 @@ export const wrapThrows =
       return {
         ok: false,
         error,
+      };
+    }
+  };
+
+export const wrapThrowsAsync =
+  <T, A extends any[]>(fn: (...args: A) => Promise<T>) =>
+  async (...args: A): Promise<Result<T>> => {
+    try {
+      return {
+        ok: true,
+        data: await fn(...args),
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: error as Error,
       };
     }
   };

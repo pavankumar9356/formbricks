@@ -1,10 +1,10 @@
 "use client";
 
-import { Input } from "@formbricks/ui/Input";
 import React from "react";
 import { useFormContext } from "react-hook-form";
+import { Input } from "@formbricks/ui/Input";
 
-const TwoFactorBackup = () => {
+export const TwoFactorBackup = () => {
   const { register } = useFormContext();
 
   return (
@@ -24,5 +24,3 @@ const TwoFactorBackup = () => {
     </>
   );
 };
-
-export default TwoFactorBackup;

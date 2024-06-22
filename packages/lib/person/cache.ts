@@ -14,11 +14,8 @@ export const personCache = {
     byEnvironmentId(environmentId: string): string {
       return `environments-${environmentId}-people`;
     },
-    byUserId(userId: string): string {
-      return `users-${userId}-people`;
-    },
     byEnvironmentIdAndUserId(environmentId: string, userId: string): string {
-      return `environments-${environmentId}-users-${userId}-people`;
+      return `environments-${environmentId}-personByUserId-${userId}`;
     },
   },
   revalidate({ id, environmentId, userId }: RevalidateProps): void {
@@ -30,12 +27,27 @@ export const personCache = {
       revalidateTag(this.tag.byEnvironmentId(environmentId));
     }
 
-    if (userId) {
-      revalidateTag(this.tag.byUserId(userId));
-    }
-
     if (environmentId && userId) {
       revalidateTag(this.tag.byEnvironmentIdAndUserId(environmentId, userId));
+    }
+  },
+};
+
+interface ActivePersonRevalidateProps {
+  id?: string;
+  environmentId?: string;
+  userId?: string;
+}
+
+export const activePersonCache = {
+  tag: {
+    byId(personId: string): string {
+      return `people-${personId}-active`;
+    },
+  },
+  revalidate({ id }: ActivePersonRevalidateProps): void {
+    if (id) {
+      revalidateTag(this.tag.byEnvironmentId(id));
     }
   },
 };

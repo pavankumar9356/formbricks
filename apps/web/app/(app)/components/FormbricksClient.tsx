@@ -1,27 +1,38 @@
 "use client";
 
-import { env } from "@/env.mjs";
 import { formbricksEnabled } from "@/app/lib/formbricks";
-import formbricks from "@formbricks/js";
-import { useEffect } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useCallback, useEffect } from "react";
+import formbricks from "@formbricks/js/app";
+import { env } from "@formbricks/lib/env";
 
 type UsageAttributesUpdaterProps = {
   numSurveys: number;
 };
 
-export default function FormbricksClient({ session }) {
+export const FormbricksClient = ({ session }) => {
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const initializeFormbricksAndSetupRouteChanges = useCallback(async () => {
+    formbricks.init({
+      environmentId: env.NEXT_PUBLIC_FORMBRICKS_ENVIRONMENT_ID || "",
+      apiHost: env.NEXT_PUBLIC_FORMBRICKS_API_HOST || "",
+      userId: session.user.id,
+    });
+    formbricks.setEmail(session.user.email);
+
+    formbricks.registerRouteChange();
+  }, [session.user.email, session.user.id]);
+
   useEffect(() => {
     if (formbricksEnabled && session?.user && formbricks) {
-      formbricks.init({
-        environmentId: env.NEXT_PUBLIC_FORMBRICKS_ENVIRONMENT_ID || "",
-        apiHost: env.NEXT_PUBLIC_FORMBRICKS_API_HOST || "",
-      });
-      formbricks.setUserId(session.user.id);
-      formbricks.setEmail(session.user.email);
+      initializeFormbricksAndSetupRouteChanges();
     }
-  }, [session]);
+  }, [session, pathname, searchParams, initializeFormbricksAndSetupRouteChanges]);
+
   return null;
-}
+};
 
 const updateUsageAttributes = (numSurveys) => {
   if (!formbricksEnabled) return;
@@ -31,10 +42,10 @@ const updateUsageAttributes = (numSurveys) => {
   }
 };
 
-export function UsageAttributesUpdater({ numSurveys }: UsageAttributesUpdaterProps) {
+export const UsageAttributesUpdater = ({ numSurveys }: UsageAttributesUpdaterProps) => {
   useEffect(() => {
     updateUsageAttributes(numSurveys);
   }, [numSurveys]);
 
   return null;
-}
+};

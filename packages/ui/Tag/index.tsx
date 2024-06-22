@@ -1,5 +1,5 @@
+import { XCircleIcon } from "lucide-react";
 import { cn } from "@formbricks/lib/cn";
-import { XCircleIcon } from "@heroicons/react/24/solid";
 
 interface Tag {
   tagId: string;
@@ -13,9 +13,18 @@ interface ResponseTagsWrapperProps {
   tags?: Tag[];
   setTagsState?: (tags: Tag[]) => void;
   highlight?: boolean;
+  allowDelete?: boolean;
 }
 
-export function Tag({ tagId, tagName, onDelete, tags, setTagsState, highlight }: ResponseTagsWrapperProps) {
+export const Tag = ({
+  tagId,
+  tagName,
+  onDelete,
+  tags,
+  setTagsState,
+  highlight,
+  allowDelete = true,
+}: ResponseTagsWrapperProps) => {
   return (
     <div
       key={tagId}
@@ -27,14 +36,16 @@ export function Tag({ tagId, tagName, onDelete, tags, setTagsState, highlight }:
         <span className="text-sm">{tagName}</span>
       </div>
 
-      <span
-        className="cursor-pointer text-sm"
-        onClick={() => {
-          if (tags && setTagsState) setTagsState(tags.filter((tag) => tag.tagId !== tagId));
-          onDelete(tagId);
-        }}>
-        <XCircleIcon fontSize={24} className="h-4 w-4 text-slate-100 hover:text-slate-200" />
-      </span>
+      {allowDelete && (
+        <span
+          className="cursor-pointer text-sm"
+          onClick={() => {
+            if (tags && setTagsState) setTagsState(tags.filter((tag) => tag.tagId !== tagId));
+            onDelete(tagId);
+          }}>
+          <XCircleIcon fontSize={24} className="h-4 w-4 text-slate-100 hover:text-slate-200" />
+        </span>
+      )}
     </div>
   );
-}
+};

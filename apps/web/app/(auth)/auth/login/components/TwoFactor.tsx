@@ -4,7 +4,7 @@ import React from "react";
 import { Controller, useFormContext } from "react-hook-form";
 import { OTPInput } from "@formbricks/ui/OTPInput";
 
-const TwoFactor = () => {
+export const TwoFactor = () => {
   const { control } = useFormContext();
 
   return (
@@ -25,5 +25,3 @@ const TwoFactor = () => {
     </>
   );
 };
-
-export default TwoFactor;

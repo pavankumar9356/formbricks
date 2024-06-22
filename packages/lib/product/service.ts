@@ -1,54 +1,53 @@
 import "server-only";
-
+import { Prisma } from "@prisma/client";
+import { z } from "zod";
 import { prisma } from "@formbricks/database";
+import { ZOptionalNumber, ZString } from "@formbricks/types/common";
 import { ZId } from "@formbricks/types/environment";
 import { DatabaseError, ValidationError } from "@formbricks/types/errors";
 import type { TProduct, TProductUpdateInput } from "@formbricks/types/product";
 import { ZProduct, ZProductUpdateInput } from "@formbricks/types/product";
-import { Prisma } from "@prisma/client";
-import { revalidateTag, unstable_cache } from "next/cache";
-import { z } from "zod";
-import { SERVICES_REVALIDATION_INTERVAL, ITEMS_PER_PAGE, IS_S3_CONFIGURED } from "../constants";
-import { validateInputs } from "../utils/validate";
-import { createEnvironment, getEnvironmentCacheTag, getEnvironmentsCacheTag } from "../environment/service";
-import { ZOptionalNumber } from "@formbricks/types/common";
+import { cache } from "../cache";
+import { ITEMS_PER_PAGE, isS3Configured } from "../constants";
+import { environmentCache } from "../environment/cache";
+import { createEnvironment } from "../environment/service";
 import { deleteLocalFilesByEnvironmentId, deleteS3FilesByEnvironmentId } from "../storage/service";
-
-export const getProductsCacheTag = (teamId: string): string => `teams-${teamId}-products`;
-export const getProductCacheTag = (environmentId: string): string => `environments-${environmentId}-product`;
-const getProductCacheKey = (environmentId: string): string[] => [getProductCacheTag(environmentId)];
+import { validateInputs } from "../utils/validate";
+import { productCache } from "./cache";
 
 const selectProduct = {
   id: true,
   createdAt: true,
   updatedAt: true,
   name: true,
-  teamId: true,
-  brandColor: true,
-  highlightBorderColor: true,
+  organizationId: true,
+  languages: true,
   recontactDays: true,
-  formbricksSignature: true,
+  linkSurveyBranding: true,
+  inAppSurveyBranding: true,
+  config: true,
   placement: true,
   clickOutsideClose: true,
   darkOverlay: true,
   environments: true,
+  styling: true,
+  logo: true,
 };
 
-export const getProducts = async (teamId: string, page?: number): Promise<TProduct[]> =>
-  unstable_cache(
+export const getProducts = (organizationId: string, page?: number): Promise<TProduct[]> =>
+  cache(
     async () => {
-      validateInputs([teamId, ZId], [page, ZOptionalNumber]);
+      validateInputs([organizationId, ZId], [page, ZOptionalNumber]);
 
       try {
         const products = await prisma.product.findMany({
           where: {
-            teamId,
+            organizationId,
           },
           select: selectProduct,
           take: page ? ITEMS_PER_PAGE : undefined,
           skip: page ? ITEMS_PER_PAGE * (page - 1) : undefined,
         });
-
         return products;
       } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -58,58 +57,51 @@ export const getProducts = async (teamId: string, page?: number): Promise<TProdu
         throw error;
       }
     },
-    [`teams-${teamId}-products`],
+    [`getProducts-${organizationId}-${page}`],
     {
-      tags: [getProductsCacheTag(teamId)],
-      revalidate: SERVICES_REVALIDATION_INTERVAL,
+      tags: [productCache.tag.byOrganizationId(organizationId)],
     }
   )();
 
-export const getProductByEnvironmentId = async (environmentId: string): Promise<TProduct | null> => {
-  if (!environmentId) {
-    throw new ValidationError("EnvironmentId is required");
-  }
-  let productPrisma;
-
-  try {
-    productPrisma = await prisma.product.findFirst({
-      where: {
-        environments: {
-          some: {
-            id: environmentId,
-          },
-        },
-      },
-      select: selectProduct,
-    });
-
-    return productPrisma;
-  } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError) {
-      console.error(error);
-      throw new DatabaseError(error.message);
-    }
-    throw error;
-  }
-};
-
-export const getProductByEnvironmentIdCached = (environmentId: string): Promise<TProduct | null> =>
-  unstable_cache(
+export const getProductByEnvironmentId = (environmentId: string): Promise<TProduct | null> =>
+  cache(
     async () => {
-      return await getProductByEnvironmentId(environmentId);
+      validateInputs([environmentId, ZId]);
+
+      let productPrisma;
+
+      try {
+        productPrisma = await prisma.product.findFirst({
+          where: {
+            environments: {
+              some: {
+                id: environmentId,
+              },
+            },
+          },
+          select: selectProduct,
+        });
+
+        return productPrisma;
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          console.error(error);
+          throw new DatabaseError(error.message);
+        }
+        throw error;
+      }
     },
-    getProductCacheKey(environmentId),
+    [`getProductByEnvironmentId-${environmentId}`],
     {
-      tags: getProductCacheKey(environmentId),
-      revalidate: SERVICES_REVALIDATION_INTERVAL,
+      tags: [productCache.tag.byEnvironmentId(environmentId)],
     }
   )();
 
 export const updateProduct = async (
   productId: string,
-  inputProduct: Partial<TProductUpdateInput>
+  inputProduct: TProductUpdateInput
 ): Promise<TProduct> => {
-  validateInputs([productId, ZId], [inputProduct, ZProductUpdateInput.partial()]);
+  validateInputs([productId, ZId], [inputProduct, ZProductUpdateInput]);
   const { environments, ...data } = inputProduct;
   let updatedProduct;
   try {
@@ -129,15 +121,22 @@ export const updateProduct = async (
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       throw new DatabaseError(error.message);
     }
+    throw error;
   }
 
   try {
     const product = ZProduct.parse(updatedProduct);
 
-    revalidateTag(getProductsCacheTag(product.teamId));
+    productCache.revalidate({
+      id: product.id,
+      organizationId: product.organizationId,
+    });
+
     product.environments.forEach((environment) => {
       // revalidate environment cache
-      revalidateTag(getProductCacheTag(environment.id));
+      productCache.revalidate({
+        environmentId: environment.id,
+      });
     });
 
     return product;
@@ -149,17 +148,89 @@ export const updateProduct = async (
   }
 };
 
-export const getProduct = async (productId: string): Promise<TProduct | null> => {
-  let productPrisma;
+export const getProduct = async (productId: string): Promise<TProduct | null> =>
+  cache(
+    async () => {
+      let productPrisma;
+      try {
+        productPrisma = await prisma.product.findUnique({
+          where: {
+            id: productId,
+          },
+          select: selectProduct,
+        });
+
+        return productPrisma;
+      } catch (error) {
+        if (error instanceof Prisma.PrismaClientKnownRequestError) {
+          throw new DatabaseError(error.message);
+        }
+        throw error;
+      }
+    },
+    [`getProduct-${productId}`],
+    {
+      tags: [productCache.tag.byId(productId)],
+    }
+  )();
+
+export const deleteProduct = async (productId: string): Promise<TProduct> => {
   try {
-    productPrisma = await prisma.product.findUnique({
+    const product = await prisma.product.delete({
       where: {
         id: productId,
       },
       select: selectProduct,
     });
 
-    return productPrisma;
+    if (product) {
+      // delete all files from storage related to this product
+
+      if (isS3Configured()) {
+        const s3FilesPromises = product.environments.map(async (environment) => {
+          return deleteS3FilesByEnvironmentId(environment.id);
+        });
+
+        try {
+          await Promise.all(s3FilesPromises);
+        } catch (err) {
+          // fail silently because we don't want to throw an error if the files are not deleted
+          console.error(err);
+        }
+      } else {
+        const localFilesPromises = product.environments.map(async (environment) => {
+          return deleteLocalFilesByEnvironmentId(environment.id);
+        });
+
+        try {
+          await Promise.all(localFilesPromises);
+        } catch (err) {
+          // fail silently because we don't want to throw an error if the files are not deleted
+          console.error(err);
+        }
+      }
+
+      productCache.revalidate({
+        id: product.id,
+        organizationId: product.organizationId,
+      });
+
+      environmentCache.revalidate({
+        productId: product.id,
+      });
+
+      product.environments.forEach((environment) => {
+        // revalidate product cache
+        productCache.revalidate({
+          environmentId: environment.id,
+        });
+        environmentCache.revalidate({
+          id: environment.id,
+        });
+      });
+    }
+
+    return product;
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       throw new DatabaseError(error.message);
@@ -168,83 +239,54 @@ export const getProduct = async (productId: string): Promise<TProduct | null> =>
   }
 };
 
-export const deleteProduct = async (productId: string): Promise<TProduct> => {
-  const product = await prisma.product.delete({
-    where: {
-      id: productId,
-    },
-    select: selectProduct,
-  });
-
-  if (product) {
-    // delete all files from storage related to this product
-
-    if (IS_S3_CONFIGURED) {
-      const s3FilesPromises = product.environments.map(async (environment) => {
-        return deleteS3FilesByEnvironmentId(environment.id);
-      });
-
-      try {
-        await Promise.all(s3FilesPromises);
-      } catch (err) {
-        // fail silently because we don't want to throw an error if the files are not deleted
-        console.error(err);
-      }
-    } else {
-      const localFilesPromises = product.environments.map(async (environment) => {
-        return deleteLocalFilesByEnvironmentId(environment.id);
-      });
-
-      try {
-        await Promise.all(localFilesPromises);
-      } catch (err) {
-        // fail silently because we don't want to throw an error if the files are not deleted
-        console.error(err);
-      }
-    }
-
-    revalidateTag(getProductsCacheTag(product.teamId));
-    revalidateTag(getEnvironmentsCacheTag(product.id));
-    product.environments.forEach((environment) => {
-      // revalidate product cache
-      revalidateTag(getProductCacheTag(environment.id));
-      revalidateTag(getEnvironmentCacheTag(environment.id));
-    });
-  }
-
-  return product;
-};
-
 export const createProduct = async (
-  teamId: string,
+  organizationId: string,
   productInput: Partial<TProductUpdateInput>
 ): Promise<TProduct> => {
+  validateInputs([organizationId, ZString], [productInput, ZProductUpdateInput.partial()]);
+
   if (!productInput.name) {
     throw new ValidationError("Product Name is required");
   }
 
   const { environments, ...data } = productInput;
 
-  let product = await prisma.product.create({
-    data: {
-      ...data,
-      name: productInput.name,
-      teamId,
-    },
-    select: selectProduct,
-  });
+  try {
+    let product = await prisma.product.create({
+      data: {
+        config: {
+          channel: null,
+          industry: null,
+        },
+        ...data,
+        name: productInput.name,
+        organizationId,
+      },
+      select: selectProduct,
+    });
 
-  const devEnvironment = await createEnvironment(product.id, {
-    type: "development",
-  });
+    productCache.revalidate({
+      id: product.id,
+      organizationId: product.organizationId,
+    });
 
-  const prodEnvironment = await createEnvironment(product.id, {
-    type: "production",
-  });
+    const devEnvironment = await createEnvironment(product.id, {
+      type: "development",
+    });
 
-  product = await updateProduct(product.id, {
-    environments: [devEnvironment, prodEnvironment],
-  });
+    const prodEnvironment = await createEnvironment(product.id, {
+      type: "production",
+    });
 
-  return product;
+    const updatedProduct = await updateProduct(product.id, {
+      environments: [devEnvironment, prodEnvironment],
+    });
+
+    return updatedProduct;
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      throw new DatabaseError(error.message);
+    }
+    throw error;
+  }
 };

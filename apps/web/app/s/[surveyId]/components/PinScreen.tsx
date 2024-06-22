@@ -1,37 +1,49 @@
 "use client";
 
-import type { NextPage } from "next";
+import { validateSurveyPinAction } from "@/app/s/[surveyId]/actions";
+import { LinkSurvey } from "@/app/s/[surveyId]/components/LinkSurvey";
+import { TSurveyPinValidationResponseError } from "@/app/s/[surveyId]/types";
+import { useCallback, useEffect, useState } from "react";
+import { cn } from "@formbricks/lib/cn";
+import { TAttributeClass } from "@formbricks/types/attributeClasses";
 import { TProduct } from "@formbricks/types/product";
 import { TResponse } from "@formbricks/types/responses";
-import { OTPInput } from "@formbricks/ui/OTPInput";
-import { useCallback, useEffect, useState } from "react";
-import { validateSurveyPinAction } from "@/app/s/[surveyId]/actions";
 import { TSurvey } from "@formbricks/types/surveys";
-import { TSurveyPinValidationResponseError } from "@/app/s/[surveyId]/types";
-import LinkSurvey from "@/app/s/[surveyId]/components/LinkSurvey";
-import { cn } from "@formbricks/lib/cn";
+import { OTPInput } from "@formbricks/ui/OTPInput";
 
-interface LinkSurveyPinScreenProps {
+interface PinScreenProps {
   surveyId: string;
   product: TProduct;
-  personId?: string;
+  userId?: string;
   emailVerificationStatus?: string;
-  prefillAnswer?: string;
   singleUseId?: string;
   singleUseResponse?: TResponse;
   webAppUrl: string;
+  IMPRINT_URL?: string;
+  PRIVACY_URL?: string;
+  IS_FORMBRICKS_CLOUD: boolean;
+  verifiedEmail?: string;
+  languageCode: string;
+  attributeClasses: TAttributeClass[];
+  isEmbed: boolean;
 }
 
-const LinkSurveyPinScreen: NextPage<LinkSurveyPinScreenProps> = (props) => {
+export const PinScreen = (props: PinScreenProps) => {
   const {
     surveyId,
     product,
     webAppUrl,
     emailVerificationStatus,
-    personId,
-    prefillAnswer,
+    userId,
     singleUseId,
     singleUseResponse,
+    IMPRINT_URL,
+    PRIVACY_URL,
+    IS_FORMBRICKS_CLOUD,
+    verifiedEmail,
+    languageCode,
+    attributeClasses,
+    isEmbed,
   } = props;
 
   const [localPinEntry, setLocalPinEntry] = useState<string>("");
@@ -103,14 +115,18 @@ const LinkSurveyPinScreen: NextPage<LinkSurveyPinScreenProps> = (props) => {
     <LinkSurvey
       survey={survey}
       product={product}
-      personId={personId}
+      userId={userId}
       emailVerificationStatus={emailVerificationStatus}
-      prefillAnswer={prefillAnswer}
       singleUseId={singleUseId}
       singleUseResponse={singleUseResponse}
       webAppUrl={webAppUrl}
+      verifiedEmail={verifiedEmail}
+      languageCode={languageCode}
+      attributeClasses={attributeClasses}
+      isEmbed={isEmbed}
+      IMPRINT_URL={IMPRINT_URL}
+      PRIVACY_URL={PRIVACY_URL}
+      IS_FORMBRICKS_CLOUD={IS_FORMBRICKS_CLOUD}
     />
   );
 };
-
-export default LinkSurveyPinScreen;

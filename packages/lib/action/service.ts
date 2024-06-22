@@ -1,50 +1,50 @@
 import "server-only";
-
+import { Prisma } from "@prisma/client";
+import { differenceInDays } from "date-fns";
 import { prisma } from "@formbricks/database";
-import { TActionClassType } from "@formbricks/types/actionClasses";
 import { TAction, TActionInput, ZActionInput } from "@formbricks/types/actions";
 import { ZOptionalNumber } from "@formbricks/types/common";
 import { ZId } from "@formbricks/types/environment";
-import { DatabaseError, ResourceNotFoundError } from "@formbricks/types/errors";
-import { Prisma } from "@prisma/client";
-import { revalidateTag, unstable_cache } from "next/cache";
+import { DatabaseError, OperationNotAllowedError } from "@formbricks/types/errors";
 import { actionClassCache } from "../actionClass/cache";
-import { ITEMS_PER_PAGE, SERVICES_REVALIDATION_INTERVAL } from "../constants";
-import { getSessionCached } from "../session/service";
-import { createActionClass, getActionClassByEnvironmentIdAndName } from "../actionClass/service";
+import { getActionClassByEnvironmentIdAndName } from "../actionClass/service";
+import { cache } from "../cache";
+import { ITEMS_PER_PAGE } from "../constants";
+import { activePersonCache } from "../person/cache";
+import { getIsPersonMonthlyActive } from "../person/service";
 import { validateInputs } from "../utils/validate";
 import { actionCache } from "./cache";
+import { getStartDateOfLastMonth, getStartDateOfLastQuarter, getStartDateOfLastWeek } from "./utils";
 
-export const getLatestActionByEnvironmentId = async (environmentId: string): Promise<TAction | null> => {
-  const action = await unstable_cache(
+export const getActionsByPersonId = (personId: string, page?: number): Promise<TAction[]> =>
+  cache(
     async () => {
-      validateInputs([environmentId, ZId]);
+      validateInputs([personId, ZId], [page, ZOptionalNumber]);
 
       try {
-        const actionPrisma = await prisma.event.findFirst({
+        const actionsPrisma = await prisma.action.findMany({
           where: {
-            eventClass: {
-              environmentId: environmentId,
+            person: {
+              id: personId,
             },
           },
           orderBy: {
             createdAt: "desc",
           },
+          take: page ? ITEMS_PER_PAGE : undefined,
+          skip: page ? ITEMS_PER_PAGE * (page - 1) : undefined,
           include: {
-            eventClass: true,
+            actionClass: true,
           },
         });
-        if (!actionPrisma) {
-          return null;
-        }
-        const action: TAction = {
-          id: actionPrisma.id,
-          createdAt: actionPrisma.createdAt,
-          sessionId: actionPrisma.sessionId,
-          properties: actionPrisma.properties,
-          actionClass: actionPrisma.eventClass,
-        };
-        return action;
+
+        return actionsPrisma.map((action) => ({
+          id: action.id,
+          createdAt: action.createdAt,
+          personId: action.personId,
+          properties: action.properties,
+          actionClass: action.actionClass,
+        }));
       } catch (error) {
         if (error instanceof Prisma.PrismaClientKnownRequestError) {
           throw new DatabaseError("Database operation failed");
@@ -53,32 +53,21 @@ export const getLatestActionByEnvironmentId = async (environmentId: string): Pro
         throw error;
       }
     },
-    [`getLastestActionByEnvironmentId-${environmentId}`],
+    [`getActionsByPersonId-${personId}-${page}`],
     {
-      tags: [actionCache.tag.byEnvironmentId(environmentId)],
-      revalidate: SERVICES_REVALIDATION_INTERVAL,
+      tags: [actionCache.tag.byPersonId(personId)],
     }
   )();
 
-  // since the unstable_cache function does not support deserialization of dates, we need to manually deserialize them
-  // https://github.com/vercel/next.js/issues/51613
-  return action
-    ? {
-        ...action,
-        createdAt: new Date(action.createdAt),
-      }
-    : action;
-};
-
-export const getActionsByEnvironmentId = async (environmentId: string, page?: number): Promise<TAction[]> => {
-  const actions = await unstable_cache(
+export const getActionsByEnvironmentId = (environmentId: string, page?: number): Promise<TAction[]> =>
+  cache(
     async () => {
       validateInputs([environmentId, ZId], [page, ZOptionalNumber]);
 
       try {
-        const actionsPrisma = await prisma.event.findMany({
+        const actionsPrisma = await prisma.action.findMany({
           where: {
-            eventClass: {
+            actionClass: {
               environmentId: environmentId,
             },
           },
@@ -88,7 +77,7 @@ export const getActionsByEnvironmentId = async (environmentId: string, page?: nu
           take: page ? ITEMS_PER_PAGE : undefined,
           skip: page ? ITEMS_PER_PAGE * (page - 1) : undefined,
           include: {
-            eventClass: true,
+            actionClass: true,
           },
         });
         const actions: TAction[] = [];
@@ -97,9 +86,10 @@ export const getActionsByEnvironmentId = async (environmentId: string, page?: nu
           actions.push({
             id: action.id,
             createdAt: action.createdAt,
-            sessionId: action.sessionId,
+            // sessionId: action.sessionId,
+            personId: action.personId,
             properties: action.properties,
-            actionClass: action.eventClass,
+            actionClass: action.actionClass,
           });
         });
         return actions;
@@ -114,83 +104,76 @@ export const getActionsByEnvironmentId = async (environmentId: string, page?: nu
     [`getActionsByEnvironmentId-${environmentId}-${page}`],
     {
       tags: [actionCache.tag.byEnvironmentId(environmentId)],
-      revalidate: SERVICES_REVALIDATION_INTERVAL,
     }
   )();
-
-  // since the unstable_cache function does not support deserialization of dates, we need to manually deserialize them
-  // https://github.com/vercel/next.js/issues/51613
-  return actions.map((action) => ({
-    ...action,
-    createdAt: new Date(action.createdAt),
-  }));
-};
 
 export const createAction = async (data: TActionInput): Promise<TAction> => {
   validateInputs([data, ZActionInput]);
 
-  const { environmentId, name, properties, sessionId } = data;
+  try {
+    const { environmentId, name, userId } = data;
 
-  let eventType: TActionClassType = "code";
-  if (name === "Exit Intent (Desktop)" || name === "50% Scroll") {
-    eventType = "automatic";
-  }
+    let actionClass = await getActionClassByEnvironmentIdAndName(environmentId, name);
 
-  const session = await getSessionCached(sessionId);
+    if (!actionClass) {
+      throw new OperationNotAllowedError(
+        `${name} action unknown. Please add this action in Formbricks first in order to use it in your code.`
+      );
+    }
 
-  if (!session) {
-    throw new ResourceNotFoundError("Session", sessionId);
-  }
-
-  let actionClass = await getActionClassByEnvironmentIdAndName(environmentId, name);
-
-  if (!actionClass) {
-    actionClass = await createActionClass(environmentId, {
-      name,
-      type: eventType,
-      environmentId,
+    const action = await prisma.action.create({
+      data: {
+        person: {
+          connect: {
+            environmentId_userId: {
+              environmentId,
+              userId,
+            },
+          },
+        },
+        actionClass: {
+          connect: {
+            id: actionClass.id,
+          },
+        },
+      },
     });
+
+    const isPersonMonthlyActive = await getIsPersonMonthlyActive(action.personId);
+    if (!isPersonMonthlyActive) {
+      activePersonCache.revalidate({ id: action.personId });
+    }
+
+    actionCache.revalidate({
+      environmentId,
+      personId: action.personId,
+    });
+
+    return {
+      id: action.id,
+      createdAt: action.createdAt,
+      personId: action.personId,
+      properties: action.properties,
+      actionClass,
+    };
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError) {
+      throw new DatabaseError("Database operation failed");
+    }
+
+    throw error;
   }
-
-  const action = await prisma.event.create({
-    data: {
-      properties,
-      session: {
-        connect: {
-          id: sessionId,
-        },
-      },
-      eventClass: {
-        connect: {
-          id: actionClass.id,
-        },
-      },
-    },
-  });
-
-  revalidateTag(sessionId);
-  actionCache.revalidate({
-    environmentId,
-  });
-
-  return {
-    id: action.id,
-    createdAt: action.createdAt,
-    sessionId: action.sessionId,
-    properties: action.properties,
-    actionClass,
-  };
 };
 
 export const getActionCountInLastHour = async (actionClassId: string): Promise<number> =>
-  unstable_cache(
+  cache(
     async () => {
       validateInputs([actionClassId, ZId]);
 
       try {
-        const numEventsLastHour = await prisma.event.count({
+        const numEventsLastHour = await prisma.action.count({
           where: {
-            eventClassId: actionClassId,
+            actionClassId: actionClassId,
             createdAt: {
               gte: new Date(Date.now() - 60 * 60 * 1000),
             },
@@ -204,19 +187,18 @@ export const getActionCountInLastHour = async (actionClassId: string): Promise<n
     [`getActionCountInLastHour-${actionClassId}`],
     {
       tags: [actionClassCache.tag.byId(actionClassId)],
-      revalidate: SERVICES_REVALIDATION_INTERVAL,
     }
   )();
 
 export const getActionCountInLast24Hours = async (actionClassId: string): Promise<number> =>
-  unstable_cache(
+  cache(
     async () => {
       validateInputs([actionClassId, ZId]);
 
       try {
-        const numEventsLast24Hours = await prisma.event.count({
+        const numEventsLast24Hours = await prisma.action.count({
           where: {
-            eventClassId: actionClassId,
+            actionClassId: actionClassId,
             createdAt: {
               gte: new Date(Date.now() - 24 * 60 * 60 * 1000),
             },
@@ -230,19 +212,18 @@ export const getActionCountInLast24Hours = async (actionClassId: string): Promis
     [`getActionCountInLast24Hours-${actionClassId}`],
     {
       tags: [actionClassCache.tag.byId(actionClassId)],
-      revalidate: SERVICES_REVALIDATION_INTERVAL,
     }
   )();
 
 export const getActionCountInLast7Days = async (actionClassId: string): Promise<number> =>
-  unstable_cache(
+  cache(
     async () => {
       validateInputs([actionClassId, ZId]);
 
       try {
-        const numEventsLast7Days = await prisma.event.count({
+        const numEventsLast7Days = await prisma.action.count({
           where: {
-            eventClassId: actionClassId,
+            actionClassId: actionClassId,
             createdAt: {
               gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000),
             },
@@ -256,6 +237,183 @@ export const getActionCountInLast7Days = async (actionClassId: string): Promise<
     [`getActionCountInLast7Days-${actionClassId}`],
     {
       tags: [actionClassCache.tag.byId(actionClassId)],
-      revalidate: SERVICES_REVALIDATION_INTERVAL,
+    }
+  )();
+
+export const getActionCountInLastQuarter = (actionClassId: string, personId: string): Promise<number> =>
+  cache(
+    async () => {
+      validateInputs([actionClassId, ZId], [personId, ZId]);
+
+      try {
+        const numEventsLastQuarter = await prisma.action.count({
+          where: {
+            personId,
+            actionClass: {
+              id: actionClassId,
+            },
+            createdAt: {
+              gte: getStartDateOfLastQuarter(),
+            },
+          },
+        });
+
+        return numEventsLastQuarter;
+      } catch (error) {
+        throw error;
+      }
+    },
+    [`getActionCountInLastQuarter-${actionClassId}-${personId}`],
+    {
+      tags: [actionClassCache.tag.byId(actionClassId)],
+    }
+  )();
+
+export const getActionCountInLastMonth = (actionClassId: string, personId: string): Promise<number> =>
+  cache(
+    async () => {
+      validateInputs([actionClassId, ZId], [personId, ZId]);
+
+      try {
+        const numEventsLastMonth = await prisma.action.count({
+          where: {
+            personId,
+            actionClass: {
+              id: actionClassId,
+            },
+            createdAt: {
+              gte: getStartDateOfLastMonth(),
+            },
+          },
+        });
+
+        return numEventsLastMonth;
+      } catch (error) {
+        throw error;
+      }
+    },
+    [`getActionCountInLastMonth-${actionClassId}-${personId}`],
+    {
+      tags: [actionClassCache.tag.byId(actionClassId)],
+    }
+  )();
+
+export const getActionCountInLastWeek = (actionClassId: string, personId: string): Promise<number> =>
+  cache(
+    async () => {
+      validateInputs([actionClassId, ZId], [personId, ZId]);
+
+      try {
+        const numEventsLastWeek = await prisma.action.count({
+          where: {
+            personId,
+            actionClass: {
+              id: actionClassId,
+            },
+            createdAt: {
+              gte: getStartDateOfLastWeek(),
+            },
+          },
+        });
+        return numEventsLastWeek;
+      } catch (error) {
+        throw error;
+      }
+    },
+    [`getActionCountInLastWeek-${actionClassId}-${personId}`],
+    {
+      tags: [actionClassCache.tag.byId(actionClassId)],
+    }
+  )();
+
+export const getTotalOccurrencesForAction = (actionClassId: string, personId: string): Promise<number> =>
+  cache(
+    async () => {
+      validateInputs([actionClassId, ZId], [personId, ZId]);
+
+      try {
+        const count = await prisma.action.count({
+          where: {
+            personId,
+            actionClass: {
+              id: actionClassId,
+            },
+          },
+        });
+
+        return count;
+      } catch (error) {
+        throw error;
+      }
+    },
+    [`getTotalOccurrencesForAction-${actionClassId}-${personId}`],
+    {
+      tags: [actionClassCache.tag.byId(actionClassId)],
+    }
+  )();
+
+export const getLastOccurrenceDaysAgo = (actionClassId: string, personId: string): Promise<number | null> =>
+  cache(
+    async () => {
+      validateInputs([actionClassId, ZId], [personId, ZId]);
+
+      try {
+        const lastEvent = await prisma.action.findFirst({
+          where: {
+            personId,
+            actionClass: {
+              id: actionClassId,
+            },
+          },
+          orderBy: {
+            createdAt: "desc",
+          },
+          select: {
+            createdAt: true,
+          },
+        });
+
+        if (!lastEvent) return null;
+        return differenceInDays(new Date(), lastEvent.createdAt);
+      } catch (error) {
+        throw error;
+      }
+    },
+    [`getLastOccurrenceDaysAgo-${actionClassId}-${personId}`],
+    {
+      tags: [actionClassCache.tag.byId(actionClassId)],
+    }
+  )();
+
+export const getFirstOccurrenceDaysAgo = (actionClassId: string, personId: string): Promise<number | null> =>
+  cache(
+    async () => {
+      validateInputs([actionClassId, ZId], [personId, ZId]);
+
+      try {
+        const firstEvent = await prisma.action.findFirst({
+          where: {
+            personId,
+            actionClass: {
+              id: actionClassId,
+            },
+          },
+          orderBy: {
+            createdAt: "asc",
+          },
+          select: {
+            createdAt: true,
+          },
+        });
+
+        if (!firstEvent) return null;
+        return differenceInDays(new Date(), firstEvent.createdAt);
+      } catch (error) {
+        throw error;
+      }
+    },
+    [`getFirstOccurrenceDaysAgo-${actionClassId}-${personId}`],
+    {
+      tags: [actionClassCache.tag.byId(actionClassId)],
     }
   )();

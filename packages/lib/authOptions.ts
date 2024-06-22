@@ -1,15 +1,33 @@
-import { env } from "@/env.mjs";
-import { verifyPassword } from "@/app/lib/auth";
-import { prisma } from "@formbricks/database";
-import { EMAIL_VERIFICATION_DISABLED } from "./constants";
-import { verifyToken } from "./jwt";
-import { getProfileByEmail } from "./profile/service";
 import type { IdentityProvider } from "@prisma/client";
 import type { NextAuthOptions } from "next-auth";
+import AzureAD from "next-auth/providers/azure-ad";
 import CredentialsProvider from "next-auth/providers/credentials";
 import GitHubProvider from "next-auth/providers/github";
 import GoogleProvider from "next-auth/providers/google";
-import AzureAD from "next-auth/providers/azure-ad";
+import { prisma } from "@formbricks/database";
+import { createAccount } from "./account/service";
+import { verifyPassword } from "./auth/utils";
+import {
+  AZUREAD_CLIENT_ID,
+  AZUREAD_CLIENT_SECRET,
+  AZUREAD_TENANT_ID,
+  DEFAULT_ORGANIZATION_ID,
+  DEFAULT_ORGANIZATION_ROLE,
+  EMAIL_VERIFICATION_DISABLED,
+  GITHUB_ID,
+  GITHUB_SECRET,
+  GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET,
+  OIDC_CLIENT_ID,
+  OIDC_CLIENT_SECRET,
+  OIDC_DISPLAY_NAME,
+  OIDC_ISSUER,
+  OIDC_SIGNING_ALGORITHM,
+} from "./constants";
+import { verifyToken } from "./jwt";
+import { createMembership } from "./membership/service";
+import { createOrganization, getOrganization } from "./organization/service";
+import { createUser, getUserByEmail, updateUser } from "./user/service";
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -62,9 +80,8 @@ export const authOptions: NextAuthOptions = {
         return {
           id: user.id,
           email: user.email,
-          firstname: user.firstname,
-          lastname: user.firstname,
           emailVerified: user.emailVerified,
+          imageUrl: user.imageUrl,
         };
       },
     }),
@@ -107,78 +124,78 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Email already verified");
         }
 
-        user = await prisma.user.update({
-          where: {
-            id: user.id,
-          },
-          data: { emailVerified: new Date().toISOString() },
-        });
+        user = await updateUser(user.id, { emailVerified: new Date() });
 
-        return {
-          id: user.id,
-          email: user.email,
-          firstname: user.firstname,
-          lastname: user.firstname,
-          emailVerified: user.emailVerified,
-        };
+        return user;
       },
     }),
     GitHubProvider({
-      clientId: env.GITHUB_ID || "",
-      clientSecret: env.GITHUB_SECRET || "",
+      clientId: GITHUB_ID || "",
+      clientSecret: GITHUB_SECRET || "",
     }),
     GoogleProvider({
-      clientId: env.GOOGLE_CLIENT_ID || "",
-      clientSecret: env.GOOGLE_CLIENT_SECRET || "",
+      clientId: GOOGLE_CLIENT_ID || "",
+      clientSecret: GOOGLE_CLIENT_SECRET || "",
       allowDangerousEmailAccountLinking: true,
     }),
     AzureAD({
-      clientId: env.AZUREAD_CLIENT_ID || "",
-      clientSecret: env.AZUREAD_CLIENT_SECRET || "",
-      tenantId: env.AZUREAD_TENANT_ID || "",
+      clientId: AZUREAD_CLIENT_ID || "",
+      clientSecret: AZUREAD_CLIENT_SECRET || "",
+      tenantId: AZUREAD_TENANT_ID || "",
     }),
+    {
+      id: "openid",
+      name: OIDC_DISPLAY_NAME || "OpenId",
+      type: "oauth",
+      clientId: OIDC_CLIENT_ID || "",
+      clientSecret: OIDC_CLIENT_SECRET || "",
+      wellKnown: `${OIDC_ISSUER}/.well-known/openid-configuration`,
+      authorization: { params: { scope: "openid email profile" } },
+      idToken: true,
+      client: {
+        id_token_signed_response_alg: OIDC_SIGNING_ALGORITHM || "RS256",
+      },
+      checks: ["pkce", "state"],
+      profile: (profile) => {
+        return {
+          id: profile.sub,
+          name: profile.name,
+          email: profile.email,
+          image: profile.picture,
+        };
+      },
+    },
   ],
   callbacks: {
     async jwt({ token }) {
-      const existingUser = await getProfileByEmail(token?.email!);
+      const existingUser = await getUserByEmail(token?.email!);
 
       if (!existingUser) {
         return token;
       }
 
-      const additionalAttributs = {
-        id: existingUser.id,
-        createdAt: existingUser.createdAt,
-        onboardingCompleted: existingUser.onboardingCompleted,
-        name: existingUser.name,
-      };
-
       return {
         ...token,
-        ...additionalAttributs,
+        profile: existingUser || null,
       };
     },
     async session({ session, token }) {
-      // @ts-ignore
+      // @ts-expect-error
       session.user.id = token?.id;
-      // @ts-ignore
-      session.user.createdAt = token?.createdAt ? new Date(token?.createdAt).toISOString() : undefined;
-      // @ts-ignore
-      session.user.onboardingCompleted = token?.onboardingCompleted;
-      // @ts-ignore
-      session.user.name = token.name || "";
+      // @ts-expect-error
+      session.user = token.profile;
 
       return session;
     },
     async signIn({ user, account }: any) {
       if (account.provider === "credentials" || account.provider === "token") {
         if (!user.emailVerified && !EMAIL_VERIFICATION_DISABLED) {
-          return `/auth/verification-requested?email=${encodeURIComponent(user.email)}`;
+          throw new Error("Email Verification is Pending");
         }
         return true;
       }
 
-      if (!user.email || !user.name || account.type !== "oauth") {
+      if (!user.email || account.type !== "oauth") {
         return false;
       }
 
@@ -210,144 +227,73 @@ export const authOptions: NextAuthOptions = {
           // check if user with this email already exist
           // if not found just update user with new email address
           // if found throw an error (TODO find better solution)
-          const otherUserWithEmail = await prisma.user.findFirst({
-            where: { email: user.email },
-          });
+          const otherUserWithEmail = await getUserByEmail(user.email);
 
           if (!otherUserWithEmail) {
-            await prisma.user.update({
-              where: { id: existingUserWithAccount.id },
-              data: { email: user.email },
-            });
+            await updateUser(existingUserWithAccount.id, { email: user.email });
             return true;
           }
-          return "/auth/login?error=Looks%20like%20you%20updated%20your%20email%20somewhere%20else.%0AA%20user%20with%20this%20new%20email%20exists%20already.";
+          throw new Error(
+            "Looks like you updated your email somewhere else. A user with this new email exists already."
+          );
         }
 
         // There is no existing account for this identity provider / account id
         // check if user account with this email already exists
         // if user already exists throw error and request password login
-        const existingUserWithEmail = await prisma.user.findFirst({
-          where: { email: user.email },
-        });
+        const existingUserWithEmail = await getUserByEmail(user.email);
 
         if (existingUserWithEmail) {
-          return "/auth/login?error=A%20user%20with%20this%20email%20exists%20already.";
+          throw new Error("A user with this email exists already.");
         }
 
-        await prisma.user.create({
-          data: {
-            name: user.name,
-            email: user.email,
-            emailVerified: new Date(Date.now()),
-            onboardingCompleted: false,
-            identityProvider: provider,
-            identityProviderAccountId: user.id as string,
-            accounts: {
-              create: [{ ...account }],
-            },
-            memberships: {
-              create: [
-                {
-                  accepted: true,
-                  role: "owner",
-                  team: {
-                    create: {
-                      name: `${user.name}'s Team`,
-                      products: {
-                        create: [
-                          {
-                            name: "My Product",
-                            environments: {
-                              create: [
-                                {
-                                  type: "production",
-                                  eventClasses: {
-                                    create: [
-                                      {
-                                        name: "New Session",
-                                        description: "Gets fired when a new session is created",
-                                        type: "automatic",
-                                      },
-                                      {
-                                        name: "Exit Intent (Desktop)",
-                                        description: "A user on Desktop leaves the website with the cursor.",
-                                        type: "automatic",
-                                      },
-                                      {
-                                        name: "50% Scroll",
-                                        description: "A user scrolled 50% of the current page",
-                                        type: "automatic",
-                                      },
-                                    ],
-                                  },
-                                  attributeClasses: {
-                                    create: [
-                                      {
-                                        name: "userId",
-                                        description: "The internal ID of the person",
-                                        type: "automatic",
-                                      },
-                                      {
-                                        name: "email",
-                                        description: "The email of the person",
-                                        type: "automatic",
-                                      },
-                                    ],
-                                  },
-                                },
-                                {
-                                  type: "development",
-                                  eventClasses: {
-                                    create: [
-                                      {
-                                        name: "New Session",
-                                        description: "Gets fired when a new session is created",
-                                        type: "automatic",
-                                      },
-                                      {
-                                        name: "Exit Intent (Desktop)",
-                                        description: "A user on Desktop leaves the website with the cursor.",
-                                        type: "automatic",
-                                      },
-                                      {
-                                        name: "50% Scroll",
-                                        description: "A user scrolled 50% of the current page",
-                                        type: "automatic",
-                                      },
-                                    ],
-                                  },
-                                  attributeClasses: {
-                                    create: [
-                                      {
-                                        name: "userId",
-                                        description: "The internal ID of the person",
-                                        type: "automatic",
-                                      },
-                                      {
-                                        name: "email",
-                                        description: "The email of the person",
-                                        type: "automatic",
-                                      },
-                                    ],
-                                  },
-                                },
-                              ],
-                            },
-                          },
-                        ],
-                      },
-                    },
-                  },
-                },
-              ],
-            },
-          },
-          include: {
-            memberships: true,
-          },
+        const userProfile = await createUser({
+          name: user.name || user.email.split("@")[0],
+          email: user.email,
+          emailVerified: new Date(Date.now()),
+          identityProvider: provider,
+          identityProviderAccountId: account.providerAccountId,
         });
 
+        // Default organization assignment if env variable is set
+        if (DEFAULT_ORGANIZATION_ID && DEFAULT_ORGANIZATION_ID.length > 0) {
+          // check if organization exists
+          let organization = await getOrganization(DEFAULT_ORGANIZATION_ID);
+          let isNewOrganization = false;
+          if (!organization) {
+            // create organization with id from env
+            organization = await createOrganization({
+              id: DEFAULT_ORGANIZATION_ID,
+              name: userProfile.name + "'s Organization",
+            });
+            isNewOrganization = true;
+          }
+          const role = isNewOrganization ? "owner" : DEFAULT_ORGANIZATION_ROLE || "admin";
+          await createMembership(organization.id, userProfile.id, { role, accepted: true });
+          await createAccount({
+            ...account,
+            userId: userProfile.id,
+          });
+
+          const updatedNotificationSettings = {
+            ...userProfile.notificationSettings,
+            alert: {
+              ...userProfile.notificationSettings?.alert,
+            },
+            unsubscribedOrganizationIds: Array.from(
+              new Set([
+                ...(userProfile.notificationSettings?.unsubscribedOrganizationIds || []),
+                organization.id,
+              ])
+            ),
+          };
+
+          await updateUser(userProfile.id, {
+            notificationSettings: updatedNotificationSettings,
+          });
+          return true;
+        }
+        // Without default organization assignment
         return true;
       }
 
